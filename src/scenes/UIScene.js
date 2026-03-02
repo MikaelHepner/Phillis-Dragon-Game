@@ -10,12 +10,12 @@ export default class UIScene extends Phaser.Scene {
         // This scene will NOT zoom, so (750, 50) is actually top-right.
 
         // Backpack Icon
-        this.backpack = this.add.image(750, 120, 'backpack');
+        this.backpack = this.add.image(750, 100, 'backpack');
         this.backpack.setScale(0.15);
         this.backpack.setInteractive({ useHandCursor: true });
 
         // Apple Counter Text (HUD)
-        this.appleText = this.add.text(750, 120, '0', {
+        this.appleText = this.add.text(750, 100, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace', // Retro font look
             fill: '#ffffff',
@@ -119,11 +119,11 @@ export default class UIScene extends Phaser.Scene {
 
     createCoinHUD() {
         // Coin Icon (Below Backpack)
-        this.coinIcon = this.add.image(750, 300, 'coin'); // Y=300 (Safe distance)
+        this.coinIcon = this.add.image(750, 220, 'coin'); // Under the backpack
         this.coinIcon.setScale(0.15);
 
         // Coin Text
-        this.coinText = this.add.text(750, 300, '0', {
+        this.coinText = this.add.text(750, 220, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#FFD700', // Gold color

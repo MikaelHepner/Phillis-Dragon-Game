@@ -9,7 +9,8 @@ export default class MainScene extends Phaser.Scene {
         // 1. Create World
         // Tiling sprite for infinite grass. 
         // Using a large area (4000x4000) to feel "infinite"
-        this.add.tileSprite(1000, 1000, 4000, 4000, 'grass');
+        const grass = this.add.tileSprite(1000, 1000, 4000, 4000, 'grass');
+        grass.setTileScale(0.5); // Zooms out the grass texture by 2x
 
         // Set world bounds suitable for exploration
         this.physics.world.setBounds(0, 0, 2000, 2000);
@@ -39,9 +40,9 @@ export default class MainScene extends Phaser.Scene {
 
             // Face the direction
             if (this.target.x < this.player.x) {
-                this.player.setFlipX(true);
-            } else {
                 this.player.setFlipX(false);
+            } else {
+                this.player.setFlipX(true);
             }
         });
 

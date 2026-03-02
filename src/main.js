@@ -9,7 +9,9 @@ const config = {
     height: 600,
     parent: 'app',
     backgroundColor: '#5c9634', // Match the grass green
-    pixelArt: true, // IMPORTANT: Keeps sprites crisp when scaled
+    pixelArt: false, // Disable for smoother rendering of high-res backgrounds
+    antialias: true,
+    roundPixels: true,
     physics: {
         default: 'arcade',
         arcade: {
