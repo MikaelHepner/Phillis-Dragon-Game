@@ -31,19 +31,11 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
         this.cameras.main.setZoom(2.0); // Zoom in to appreciate the pixel art
 
-        // 4. Input (Click to move)
-        this.target = null;
-
-        this.input.on('pointerdown', (pointer) => {
-            this.target = new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
-            this.physics.moveToObject(this.player, this.target, 150); // Slower, relaxed speed
-
-            // Face the direction
-            if (this.target.x < this.player.x) {
-                this.player.setFlipX(false);
-            } else {
-                this.player.setFlipX(true);
-            }
+        // 4. Input (Dragon Menu)
+        this.player.setInteractive({ useHandCursor: true });
+        this.player.on('pointerdown', () => {
+            console.log('Dragon clicked!');
+            this.events.emit('showDragonMenu');
         });
 
         // 5. Trees (Physics Group for Overlap)
@@ -57,13 +49,19 @@ export default class MainScene extends Phaser.Scene {
             tree.refreshBody(); // Important for static bodies after scale change
         }
 
-        // 6. Inventory System
+        // 6. Inventory & Stats System
         this.apples = 0;
         this.lastAppleTime = 0;
-        this.coins = 0; // Initialize coins
+        this.coins = 0;
 
-        // UI is now handled by UIScene, which we ensure is on top
-        this.scene.bringToTop('UIScene');
+        // Dragon Stats
+        this.stats = {
+            love: 20,
+            hunger: 80,
+            energy: 100,
+            level: 1,
+            xp: 0
+        };
 
         // 7. Overlap Check
         this.physics.add.overlap(this.player, this.trees, this.collectApple, null, this);
@@ -80,17 +78,92 @@ export default class MainScene extends Phaser.Scene {
         }
 
         this.physics.add.overlap(this.player, this.rocks, this.breakRock, null, this);
+        
+        // Listen for pet events
+        this.events.on('petDragon', () => {
+            this.stats.love = Math.min(100, this.stats.love + 5);
+            this.events.emit('updateStats', this.stats);
+            this.handlePetAnimation();
+        });
+
+        // Listen for fight events
+        this.events.on('startFight', () => {
+            this.handleFight();
+        });
+
+        // Stat Decay Timer (Every 10 seconds)
+        this.time.addEvent({
+            delay: 10000,
+            callback: () => {
+                this.stats.hunger = Math.max(0, this.stats.hunger - 2);
+                this.stats.energy = Math.max(0, this.stats.energy - 1);
+                this.events.emit('updateStats', this.stats);
+            },
+            loop: true
+        });
+
+        // Launch UI Scene now that we are ready
+        this.scene.launch('UIScene');
+    }
+
+    handleFight() {
+        if (this.stats.energy < 20) {
+            this.events.emit('updateStats', this.stats);
+            return;
+        }
+
+        // 1. Spend Energy
+        this.stats.energy -= 20;
+
+        // 2. Gain XP
+        this.stats.xp += 35;
+        
+        // Check Level Up
+        if (this.stats.xp >= 100) {
+            this.stats.xp -= 100;
+            this.stats.level++;
+        }
+
+        this.events.emit('updateStats', this.stats);
+    }
+
+    handlePetAnimation() {
+        // 1. Dragon "Happy" Tween (Bounce/Squash)
+        this.tweens.add({
+            targets: this.player,
+            scaleX: 0.09,
+            scaleY: 0.07,
+            duration: 100,
+            yoyo: true,
+            repeat: 1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // 2. Spawn Hearts
+        for (let i = 0; i < 3; i++) {
+            const heart = this.add.image(this.player.x, this.player.y - 20, 'heart');
+            heart.setScale(0.05);
+            heart.setAlpha(1);
+            
+            // Randomize heart trajectory
+            const destX = this.player.x + Phaser.Math.Between(-50, 50);
+            const destY = this.player.y - Phaser.Math.Between(100, 150);
+            
+            this.tweens.add({
+                targets: heart,
+                x: destX,
+                y: destY,
+                alpha: 0,
+                scale: 0.1,
+                duration: 1500,
+                ease: 'Cubic.easeOut',
+                onComplete: () => heart.destroy()
+            });
+        }
     }
 
     update() {
-        // Stop if close to target
-        if (this.target) {
-            const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.target.x, this.target.y);
-            if (distance < 10) {
-                this.player.body.reset(this.target.x, this.target.y);
-                this.target = null;
-            }
-        }
+        // Dragon movement is disabled
     }
 
     collectApple(player, tree) {
