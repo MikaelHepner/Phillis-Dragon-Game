@@ -7,8 +7,10 @@ export default class BattleScene extends Phaser.Scene {
 
     init(data) {
         // Data passed from selection
-        this.chosenDragonKey = data.dragonKey || 'dragon_fire';
-        this.chosenDragonName = data.dragonName || 'Fire Dragon';
+        this.opponentKey = data.opponentKey || 'dragon_fire';
+        this.opponentName = data.opponentName || 'Fire Dragon';
+        this.playerKey = data.playerKey || 'dragon_ice';
+        this.playerName = data.playerName || 'Player Dragon';
     }
 
     create() {
@@ -20,15 +22,21 @@ export default class BattleScene extends Phaser.Scene {
         const scale = Math.max(800 / arena.width, 600 / arena.height);
         arena.setScale(scale);
 
-        // 2. Add Chosen Dragon
-        // Position it on the circular platform
-        this.dragon = this.add.sprite(400, 350, this.chosenDragonKey);
-        this.dragon.setScale(0.25); // Larger than in MainScene for detail
+        // 2. Add Dragons
+        
+        // Player Dragon (Left)
+        this.playerDragon = this.add.sprite(200, 400, this.playerKey);
+        this.playerDragon.setScale(0.25); // Equal size for fair fight
+        this.playerDragon.setFlipX(true); // Face right
 
-        // Add a simple idle animation/tween
+        // Chosen Opponent Dragon (Right)
+        this.opponentDragon = this.add.sprite(600, 400, this.opponentKey);
+        this.opponentDragon.setScale(0.25); 
+
+        // Add idle animations/tweens for both
         this.tweens.add({
-            targets: this.dragon,
-            y: 340,
+            targets: [this.playerDragon, this.opponentDragon],
+            y: '-=10',
             duration: 1500,
             yoyo: true,
             repeat: -1,
@@ -45,10 +53,25 @@ export default class BattleScene extends Phaser.Scene {
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        this.add.text(400, 100, this.chosenDragonName, {
-            fontSize: '24px',
+        this.vsText = this.add.text(400, 150, 'VS', {
+            fontSize: '64px',
             fontFamily: '"Courier New", Courier, monospace',
-            fill: '#ffcc00',
+            fill: '#ff0000',
+            stroke: '#000000',
+            strokeThickness: 8,
+            fontStyle: 'italic'
+        }).setOrigin(0.5);
+
+        this.add.text(200, 320, 'YOUR DRAGON', {
+            fontSize: '20px',
+            fill: '#00ff00',
+            stroke: '#000000',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+
+        this.add.text(600, 320, this.opponentName, {
+            fontSize: '20px',
+            fill: '#ff3333',
             stroke: '#000000',
             strokeThickness: 3
         }).setOrigin(0.5);
@@ -70,30 +93,5 @@ export default class BattleScene extends Phaser.Scene {
             this.scene.resume('MainScene');
             this.scene.resume('UIScene');
         });
-
-        // 4. Effects (Particles)
-        this.createParticles();
-    }
-
-    createParticles() {
-        const particles = this.add.particles(0, 0, 'heart', {
-            x: { min: 0, max: 800 },
-            y: { min: 0, max: 600 },
-            scale: { start: 0.05, end: 0 },
-            alpha: { start: 0.5, end: 0 },
-            speed: { min: 10, max: 30 },
-            lifespan: 2000,
-            frequency: 100,
-            blendMode: 'ADD'
-        });
-        
-        // Change color based on dragon
-        if (this.chosenDragonKey === 'dragon_fire') {
-            particles.setParticleTint(0xff6600);
-        } else if (this.chosenDragonKey === 'dragon_ice') {
-            particles.setParticleTint(0x00ffff);
-        } else if (this.chosenDragonKey === 'dragon_storm') {
-            particles.setParticleTint(0xffff00);
-        }
     }
 }

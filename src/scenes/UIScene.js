@@ -405,22 +405,45 @@ export default class UIScene extends Phaser.Scene {
 
     createFighterSelection() {
         this.selectionOpen = false;
+        this.selectionMode = 'opponent'; 
+        this.selectedOpponent = null;
+        this.selectedTeam = [null, null, null];
+        
         this.selectionContainer = this.add.container(400, 300);
         this.selectionContainer.setVisible(false);
 
         // Background
-        const bg = this.add.rectangle(0, 0, 600, 400, 0x000000, 0.9);
-        bg.setStrokeStyle(3, 0xff0000); // Red for battle
+        const bg = this.add.rectangle(0, 0, 600, 450, 0x000000, 0.9);
+        bg.setStrokeStyle(3, 0xff0000); 
         this.selectionContainer.add(bg);
 
         // Title
-        const title = this.add.text(0, -160, 'Choose Your Fighter', {
+        this.selectionTitle = this.add.text(0, -180, 'Select Opponent', {
             fontSize: '32px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#ff0000',
             fontStyle: 'bold'
         }).setOrigin(0.5);
-        this.selectionContainer.add(title);
+        this.selectionContainer.add(this.selectionTitle);
+
+        // View Container (Dynamic content)
+        this.selectionView = this.add.container(0, 0);
+        this.selectionContainer.add(this.selectionView);
+
+        // Close Button
+        const closeBtn = this.add.text(0, 190, 'Cancel', { fontSize: '18px', fill: '#aaaaaa' })
+            .setOrigin(0.5).setInteractive({ useHandCursor: true });
+        closeBtn.on('pointerdown', () => this.toggleFighterSelection());
+        this.selectionContainer.add(closeBtn);
+
+        // Initial Render
+        this.renderOpponentSelection();
+    }
+
+    renderOpponentSelection() {
+        this.selectionView.removeAll(true);
+        this.selectionTitle.setText('Select Opponent');
+        this.selectionTitle.setStyle({ fill: '#ff0000' });
 
         const fighters = [
             { name: 'Fire Dragon', key: 'dragon_fire', x: -180 },
@@ -429,49 +452,127 @@ export default class UIScene extends Phaser.Scene {
         ];
 
         fighters.forEach(f => {
-            const dragonImg = this.add.image(f.x, -20, f.key).setScale(0.12);
+            const group = this.add.container(f.x, 0);
+            
+            const dragonImg = this.add.image(0, -20, f.key).setScale(0.12);
             dragonImg.setInteractive({ useHandCursor: true });
             
-            const nameText = this.add.text(f.x, 80, f.name, {
-                fontSize: '18px',
-                fill: '#ffffff'
-            }).setOrigin(0.5);
-
-            const selectBtn = this.add.text(f.x, 130, 'SELECT', {
+            const nameText = this.add.text(0, 80, f.name, { fontSize: '18px', fill: '#ffffff' }).setOrigin(0.5);
+            const selectBtn = this.add.text(0, 130, 'SELECT', {
                 fontSize: '20px',
                 fill: '#ffffff',
                 backgroundColor: '#333333',
                 padding: { x: 15, y: 5 }
             }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-            dragonImg.on('pointerdown', () => this.handleSelection(f.name));
-            selectBtn.on('pointerdown', () => this.handleSelection(f.name));
+            const handleSelect = () => {
+                this.selectedOpponent = { name: f.name, key: f.key };
+                this.selectionMode = 'player';
+                this.renderTeamSelection();
+            };
 
-            dragonImg.on('pointerover', () => dragonImg.setScale(0.14));
-            dragonImg.on('pointerout', () => dragonImg.setScale(0.12));
+            dragonImg.on('pointerdown', handleSelect);
+            selectBtn.on('pointerdown', handleSelect);
+            
+            group.add([dragonImg, nameText, selectBtn]);
+            this.selectionView.add(group);
+        });
+    }
 
-            this.selectionContainer.add([dragonImg, nameText, selectBtn]);
+    renderTeamSelection() {
+        this.selectionView.removeAll(true);
+        this.selectionTitle.setText('Build Your Team');
+        this.selectionTitle.setStyle({ fill: '#00ff00' });
+
+        const slotSpacing = 160;
+        for (let i = 0; i < 3; i++) {
+            const x = (i - 1) * slotSpacing;
+            
+            // Slot Box
+            const slotBox = this.add.rectangle(x, -20, 120, 120, 0x222222);
+            slotBox.setStrokeStyle(2, 0x444444);
+            slotBox.setInteractive({ useHandCursor: true });
+            
+            const plus = this.add.text(x, -20, '+', { fontSize: '48px', fill: '#444444' }).setOrigin(0.5);
+            
+            this.selectionView.add([slotBox, plus]);
+
+            // If a dragon is already selected for this slot, show it
+            if (this.selectedTeam[i]) {
+                const dragon = this.add.image(x, -20, this.selectedTeam[i].key).setScale(0.1);
+                this.selectionView.add(dragon);
+                plus.setVisible(false);
+            }
+
+            slotBox.on('pointerdown', () => this.showDragonList(i));
+        }
+
+        // Start Battle Button
+        const startBtn = this.add.text(0, 130, 'START BATTLE', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            backgroundColor: this.selectedTeam.some(t => t !== null) ? '#00aa00' : '#333333',
+            padding: { x: 30, y: 10 }
+        }).setOrigin(0.5);
+
+        if (this.selectedTeam.some(t => t !== null)) {
+            startBtn.setInteractive({ useHandCursor: true });
+            startBtn.on('pointerdown', () => this.handleStartBattle());
+        }
+
+        this.selectionView.add(startBtn);
+    }
+
+    showDragonList(slotIndex) {
+        // Simple overlay for selecting a dragon for a specific slot
+        const overlay = this.add.container(0, 0);
+        const bg = this.add.rectangle(0, 0, 800, 600, 0x000000, 0.7);
+        bg.setInteractive(); // Block clicks below
+        overlay.add(bg);
+
+        const listBg = this.add.rectangle(0, 0, 400, 300, 0x1a1a1a);
+        listBg.setStrokeStyle(2, 0xffffff);
+        overlay.add(listBg);
+
+        const title = this.add.text(0, -120, 'Choose Dragon', { fontSize: '24px', fill: '#ffffff' }).setOrigin(0.5);
+        overlay.add(title);
+
+        const options = [
+            { name: 'Fire Dragon', key: 'dragon_fire' },
+            { name: 'Ice Dragon', key: 'dragon_ice' },
+            { name: 'Storm Dragon', key: 'dragon_storm' }
+        ];
+
+        options.forEach((opt, idx) => {
+            const y = -40 + (idx * 60);
+            const btn = this.add.text(0, y, opt.name, {
+                fontSize: '20px',
+                fill: '#ffffff',
+                backgroundColor: '#333333',
+                padding: { x: 20, y: 5 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+            btn.on('pointerdown', () => {
+                this.selectedTeam[slotIndex] = opt;
+                overlay.destroy();
+                this.renderTeamSelection();
+            });
+
+            overlay.add(btn);
         });
 
-        // Close
-        const closeBtn = this.add.text(0, 180, 'Cancel', { fontSize: '16px', fill: '#aaaaaa' })
+        const cancel = this.add.text(0, 120, 'Cancel', { fontSize: '16px', fill: '#aaaaaa' })
             .setOrigin(0.5).setInteractive({ useHandCursor: true });
-        closeBtn.on('pointerdown', () => this.toggleFighterSelection());
-        this.selectionContainer.add(closeBtn);
+        cancel.on('pointerdown', () => overlay.destroy());
+        overlay.add(cancel);
+
+        this.selectionContainer.add(overlay);
     }
 
-    toggleFighterSelection() {
-        this.selectionOpen = !this.selectionOpen;
-        this.selectionContainer.setVisible(this.selectionOpen);
-    }
-
-    handleSelection(dragonName) {
-        console.log(`Chosen: ${dragonName}`);
-        
-        // Map dragon name to key
-        let dragonKey = 'dragon_fire';
-        if (dragonName === 'Ice Dragon') dragonKey = 'dragon_ice';
-        if (dragonName === 'Storm Dragon') dragonKey = 'dragon_storm';
+    handleStartBattle() {
+        // Find the first selected dragon in the team
+        const playerDragon = this.selectedTeam.find(t => t !== null);
+        if (!playerDragon) return;
 
         // Pause current gameplay
         this.scene.pause('MainScene');
@@ -479,10 +580,25 @@ export default class UIScene extends Phaser.Scene {
         
         // Start Battle Arena
         this.scene.launch('BattleScene', { 
-            dragonName: dragonName, 
-            dragonKey: dragonKey 
+            opponentName: this.selectedOpponent.name, 
+            opponentKey: this.selectedOpponent.key,
+            playerName: playerDragon.name,
+            playerKey: playerDragon.key
         });
 
+        // Reset for next time
+        this.selectedTeam = [null, null, null];
+        this.selectionMode = 'opponent';
+        this.renderOpponentSelection();
         this.toggleFighterSelection();
+    }
+
+    toggleFighterSelection() {
+        this.selectionOpen = !this.selectionOpen;
+        this.selectionContainer.setVisible(this.selectionOpen);
+        if (this.selectionOpen) {
+            this.selectionMode = 'opponent';
+            this.renderOpponentSelection();
+        }
     }
 }
