@@ -105,6 +105,7 @@ export default class UIScene extends Phaser.Scene {
         const initialStats = mainScene.stats || { love: 20, hunger: 80, energy: 100, level: 1 };
         this.createStatusPage(initialStats);
         this.createFighterSelection();
+        this.createPackStore();
     }
 
     toggleInventory() {
@@ -180,6 +181,23 @@ export default class UIScene extends Phaser.Scene {
             fill: '#aaaaaa'
         }).setOrigin(0.5);
         this.storeContainer.add(closeHint);
+
+        // Pack Button (Top Right)
+        const packBtn = this.add.text(330, -210, 'PACK', {
+            fontSize: '20px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#ffffff',
+            backgroundColor: '#d4af37', // Match the gold border
+            padding: { x: 15, y: 5 },
+            fontStyle: 'bold'
+        }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+
+        packBtn.on('pointerdown', () => {
+            this.toggleStore(); // Close main store
+            this.togglePackStore(); // Open pack store
+        });
+
+        this.storeContainer.add(packBtn);
 
         // Store Items
         this.renderStoreItems();
@@ -282,13 +300,186 @@ export default class UIScene extends Phaser.Scene {
         if (this.coinText) this.coinText.setText(count.toString());
     }
 
+    createPackStore() {
+        this.packStoreOpen = false;
+        this.packStoreContainer = this.add.container(400, 300);
+        this.packStoreContainer.setVisible(false);
+
+        // Background
+        const bg = this.add.rectangle(0, 0, 700, 450, 0x1a0a2a, 0.95); 
+        bg.setStrokeStyle(4, 0x00ffff); // Cyan border
+        this.packStoreContainer.add(bg);
+
+        // Title
+        const title = this.add.text(0, -160, 'Pack Store', {
+            fontSize: '32px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#00ffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.packStoreContainer.add(title);
+
+        // Pack Image
+        const packImg = this.add.image(0, -30, 'pack').setScale(0.3);
+        packImg.setInteractive({ useHandCursor: true });
+        this.packStoreContainer.add(packImg);
+
+        const packName = this.add.text(0, 80, 'Dragon Booster Pack', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.packStoreContainer.add(packName);
+
+        const packCost = this.add.text(0, 110, '10 Coins', {
+            fontSize: '20px',
+            fill: '#FFD700'
+        }).setOrigin(0.5);
+        this.packStoreContainer.add(packCost);
+
+        const buyPackBtn = this.add.text(0, 145, 'OPEN PACK', {
+            fontSize: '22px',
+            fill: '#ffffff',
+            backgroundColor: '#00aa00',
+            padding: { x: 20, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        const handleOpen = () => this.openPack();
+        buyPackBtn.on('pointerdown', handleOpen);
+        packImg.on('pointerdown', handleOpen);
+
+        this.packStoreContainer.add(buyPackBtn);
+
+        // Close Button
+        const backBtn = this.add.text(0, 180, 'Back to Store', {
+            fontSize: '22px',
+            fill: '#ffffff',
+            backgroundColor: '#ff0000',
+            padding: { x: 30, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        backBtn.on('pointerdown', () => {
+            this.togglePackStore();
+            this.toggleStore();
+        });
+        this.packStoreContainer.add(backBtn);
+    }
+
+    togglePackStore() {
+        this.packStoreOpen = !this.packStoreOpen;
+        this.packStoreContainer.setVisible(this.packStoreOpen);
+        
+        if (this.packStoreOpen) {
+            // Close other menus if open
+            if (this.inventoryOpen) this.toggleInventory();
+            if (this.dragonMenuOpen) this.toggleDragonMenu();
+            if (this.statusOpen) this.toggleStatusPage();
+        }
+    }
+
+    openPack() {
+        const mainScene = this.scene.get('MainScene');
+        if (mainScene.coins < 10) {
+            const feedback = this.add.text(400, 100, 'Not enough coins!', {
+                fontSize: '26px',
+                fill: '#ff0000',
+                backgroundColor: '#000000'
+            }).setOrigin(0.5);
+            
+            this.tweens.add({
+                targets: feedback,
+                y: 50,
+                alpha: 0,
+                duration: 2000,
+                onComplete: () => feedback.destroy()
+            });
+            return;
+        }
+
+        mainScene.coins -= 10;
+        this.updateCoinCount(mainScene.coins);
+
+        // Card types and items
+        const cardTypes = [
+            { name: 'Delicious Food', type: 'Food', key: 'apple' },
+            { name: 'Scale Armor', type: 'Body', key: 'armor' },
+            { name: 'Ancient Tree', type: 'Trees', key: 'tree' },
+            { name: 'Fishing Rod', type: 'Fishing', key: 'fishing_rod' }
+        ];
+
+        // Randomly pick 3 (can be duplicates)
+        const result = [];
+        for (let i = 0; i < 3; i++) {
+            result.push(cardTypes[Math.floor(Math.random() * cardTypes.length)]);
+        }
+
+        this.showPackResult(result);
+    }
+
+    showPackResult(cards) {
+        const resultContainer = this.add.container(400, 300);
+        
+        // Dark overlay
+        const overlay = this.add.rectangle(0, 0, 800, 600, 0x000000, 0.85).setInteractive();
+        resultContainer.add(overlay);
+
+        const title = this.add.text(0, -220, 'PACK UNLOCKED!', {
+            fontSize: '42px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#00ffff',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5);
+        resultContainer.add(title);
+
+        cards.forEach((card, i) => {
+            const x = (i - 1) * 220;
+            const cardGroup = this.add.container(x, 0);
+            
+            const cardBg = this.add.rectangle(0, 0, 180, 260, 0x1a1a1a).setStrokeStyle(4, 0x00ffff);
+            const cardImg = this.add.image(0, -30, card.key).setScale(0.25);
+            const nameText = this.add.text(0, 60, card.name, { fontSize: '20px', fill: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+            const typeText = this.add.text(0, 90, card.type.toUpperCase(), { fontSize: '16px', fill: '#aaaaaa' }).setOrigin(0.5);
+            
+            cardGroup.add([cardBg, cardImg, nameText, typeText]);
+            resultContainer.add(cardGroup);
+
+            // Animation
+            cardGroup.setScale(0);
+            this.tweens.add({
+                targets: cardGroup,
+                scale: 1,
+                delay: i * 300,
+                duration: 600,
+                ease: 'Back.easeOut'
+            });
+        });
+
+        const closeBtn = this.add.text(0, 220, 'COLLECT ALL', {
+            fontSize: '26px',
+            fill: '#ffffff',
+            backgroundColor: '#00aa00',
+            padding: { x: 40, y: 15 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        closeBtn.on('pointerdown', () => {
+            resultContainer.destroy();
+        });
+        
+        closeBtn.on('pointerover', () => closeBtn.setScale(1.1));
+        closeBtn.on('pointerout', () => closeBtn.setScale(1));
+        
+        resultContainer.add(closeBtn);
+    }
+
     createDragonMenu() {
         this.dragonMenuOpen = false;
         this.dragonMenuContainer = this.add.container(400, 300);
         this.dragonMenuContainer.setVisible(false);
 
         // Background
-        const bg = this.add.rectangle(0, 0, 300, 450, 0x1a1a1a, 0.9);
+        const bg = this.add.rectangle(0, 0, 300, 500, 0x1a1a1a, 0.9);
         bg.setStrokeStyle(2, 0xffffff);
         this.dragonMenuContainer.add(bg);
 
@@ -302,9 +493,9 @@ export default class UIScene extends Phaser.Scene {
         this.dragonMenuContainer.add(title);
 
         // Options
-        const options = ['Feed', 'Pet', 'Fight', 'Status', 'Close'];
+        const options = ['Feed', 'Pet', 'Fight', 'Build', 'Status', 'Close'];
         options.forEach((opt, index) => {
-            const btn = this.add.text(0, -60 + (index * 60), opt, {
+            const btn = this.add.text(0, -100 + (index * 60), opt, {
                 fontSize: '22px',
                 fontFamily: '"Courier New", Courier, monospace',
                 fill: '#ffffff',
@@ -330,6 +521,10 @@ export default class UIScene extends Phaser.Scene {
                         this.toggleDragonMenu();
                     } else if (opt === 'Fight') {
                         this.toggleFighterSelection();
+                        this.toggleDragonMenu();
+                    } else if (opt === 'Build') {
+                        console.log('Build mode selected');
+                        // Potential logic for building structures
                         this.toggleDragonMenu();
                     } else if (opt === 'Status') {
                         this.toggleStatusPage();
