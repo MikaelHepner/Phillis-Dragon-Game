@@ -106,10 +106,14 @@ export default class UIScene extends Phaser.Scene {
         this.createStatusPage(initialStats);
         this.createFighterSelection();
         this.createPackStore();
+        this.createBuildMenu();
+        this.selectedCardIndex = null;
     }
 
     toggleInventory() {
-        this.inventoryOpen = !this.inventoryOpen;
+        const wasOpen = this.inventoryOpen;
+        this.closeAllMenus();
+        this.inventoryOpen = !wasOpen;
         this.inventoryContainer.setVisible(this.inventoryOpen);
     }
 
@@ -283,16 +287,13 @@ export default class UIScene extends Phaser.Scene {
     }
 
     toggleStore() {
-        this.storeOpen = !this.storeOpen;
+        const wasOpen = this.storeOpen;
+        this.closeAllMenus();
+        this.storeOpen = !wasOpen;
         this.storeContainer.setVisible(this.storeOpen);
 
         if (this.storeOpen) {
             this.renderStoreItems(); // Refresh on open
-        }
-
-        // Close inventory if open
-        if (this.storeOpen && this.inventoryOpen) {
-            this.toggleInventory();
         }
     }
 
@@ -366,15 +367,10 @@ export default class UIScene extends Phaser.Scene {
     }
 
     togglePackStore() {
-        this.packStoreOpen = !this.packStoreOpen;
+        const wasOpen = this.packStoreOpen;
+        this.closeAllMenus();
+        this.packStoreOpen = !wasOpen;
         this.packStoreContainer.setVisible(this.packStoreOpen);
-        
-        if (this.packStoreOpen) {
-            // Close other menus if open
-            if (this.inventoryOpen) this.toggleInventory();
-            if (this.dragonMenuOpen) this.toggleDragonMenu();
-            if (this.statusOpen) this.toggleStatusPage();
-        }
     }
 
     openPack() {
@@ -402,9 +398,12 @@ export default class UIScene extends Phaser.Scene {
         // Card types and items
         const cardTypes = [
             { name: 'Delicious Food', type: 'Food', key: 'apple' },
-            { name: 'Scale Armor', type: 'Body', key: 'armor' },
             { name: 'Ancient Tree', type: 'Trees', key: 'tree' },
-            { name: 'Fishing Rod', type: 'Fishing', key: 'fishing_rod' }
+            { name: 'Fishing Rod', type: 'Fishing', key: 'fishing_rod' },
+            { name: 'Dragon Head', type: 'Part', key: 'part_head' },
+            { name: 'Dragon Wings', type: 'Part', key: 'part_wings' },
+            { name: 'Dragon Tail', type: 'Part', key: 'part_tail' },
+            { name: 'Dragon Body', type: 'Part', key: 'part_body' }
         ];
 
         // Randomly pick 3 (can be duplicates)
@@ -464,6 +463,8 @@ export default class UIScene extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         closeBtn.on('pointerdown', () => {
+            const mainScene = this.scene.get('MainScene');
+            mainScene.ownedCards.push(...cards);
             resultContainer.destroy();
         });
         
@@ -521,14 +522,10 @@ export default class UIScene extends Phaser.Scene {
                         this.toggleDragonMenu();
                     } else if (opt === 'Fight') {
                         this.toggleFighterSelection();
-                        this.toggleDragonMenu();
                     } else if (opt === 'Build') {
-                        console.log('Build mode selected');
-                        // Potential logic for building structures
-                        this.toggleDragonMenu();
+                        this.toggleBuildMenu();
                     } else if (opt === 'Status') {
                         this.toggleStatusPage();
-                        this.toggleDragonMenu();
                     }
                 }
             });
@@ -538,13 +535,10 @@ export default class UIScene extends Phaser.Scene {
     }
 
     toggleDragonMenu() {
-        this.dragonMenuOpen = !this.dragonMenuOpen;
+        const wasOpen = this.dragonMenuOpen;
+        this.closeAllMenus();
+        this.dragonMenuOpen = !wasOpen;
         this.dragonMenuContainer.setVisible(this.dragonMenuOpen);
-
-        if (this.dragonMenuOpen) {
-            if (this.inventoryOpen) this.toggleInventory();
-            if (this.storeOpen) this.toggleStore();
-        }
     }
 
     handleFeed() {
@@ -658,7 +652,9 @@ export default class UIScene extends Phaser.Scene {
     }
 
     toggleStatusPage() {
-        this.statusOpen = !this.statusOpen;
+        const wasOpen = this.statusOpen;
+        this.closeAllMenus();
+        this.statusOpen = !wasOpen;
         this.statusContainer.setVisible(this.statusOpen);
     }
 
@@ -866,11 +862,344 @@ export default class UIScene extends Phaser.Scene {
     }
 
     toggleFighterSelection() {
-        this.selectionOpen = !this.selectionOpen;
+        const wasOpen = this.selectionOpen;
+        this.closeAllMenus();
+        this.selectionOpen = !wasOpen;
         this.selectionContainer.setVisible(this.selectionOpen);
         if (this.selectionOpen) {
             this.selectionMode = 'opponent';
             this.renderOpponentSelection();
         }
+    }
+
+    // --- BUILD MENU ---
+
+    createBuildMenu() {
+        this.buildMenuOpen = false;
+        this.buildMenuContainer = this.add.container(400, 300);
+        this.buildMenuContainer.setVisible(false);
+
+        // Background
+        const bg = this.add.rectangle(0, 0, 700, 450, 0x0a1a0a, 0.95);
+        bg.setStrokeStyle(4, 0x00ff00);
+        this.buildMenuContainer.add(bg);
+
+        // Title
+        const title = this.add.text(0, -160, 'Build Menu', {
+            fontSize: '32px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#00ff00',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.buildMenuContainer.add(title);
+
+        // Subtitle
+        const subtitle = this.add.text(0, -120, 'Your Cards Inventory', {
+            fontSize: '18px',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        this.buildMenuContainer.add(subtitle);
+
+        // Items Container
+        this.buildItemsContainer = this.add.container(0, 0);
+        this.buildMenuContainer.add(this.buildItemsContainer);
+
+        // Close Button
+        const closeBtn = this.add.text(0, 180, 'Close', {
+            fontSize: '22px',
+            fill: '#ffffff',
+            backgroundColor: '#ff0000',
+            padding: { x: 30, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        closeBtn.on('pointerdown', () => this.toggleBuildMenu());
+        this.buildMenuContainer.add(closeBtn);
+    }
+
+    renderBuildItems() {
+        this.buildItemsContainer.removeAll(true);
+        const mainScene = this.scene.get('MainScene');
+        const cards = mainScene.ownedCards || [];
+
+        if (cards.length === 0) {
+            const emptyText = this.add.text(0, 0, 'No cards collected yet.\nOpen packs in the Store!', {
+                fontSize: '20px',
+                fill: '#aaaaaa',
+                align: 'center'
+            }).setOrigin(0.5);
+            this.buildItemsContainer.add(emptyText);
+            return;
+        }
+
+        // Grid layout
+        const cols = 4;
+        const spacingX = 160;
+        const spacingY = 100;
+        const startX = -((cols - 1) * spacingX) / 2;
+        const startY = -40;
+
+        cards.forEach((card, index) => {
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+            const x = startX + col * spacingX;
+            const y = startY + row * spacingY;
+
+            const cardGroup = this.add.container(x, y);
+            
+            // 1. Add Background FIRST
+            const cardBg = this.add.rectangle(0, 0, 140, 80, 0x1a1a1a).setStrokeStyle(2, 0x00ff00);
+            cardGroup.add(cardBg);
+
+            // 2. Icon rendering
+            if (card.type === 'Combo' && card.parts) {
+                // Use dedicated combo images if available
+                const comboKey = card.parts.length === 2 ? 'combo_2' : (card.parts.length === 3 ? 'combo_3' : card.key);
+                const comboImg = this.add.image(-40, 0, comboKey).setScale(0.045);
+                cardGroup.add(comboImg);
+                
+                // Show tiny part indicators on the bottom left
+                card.parts.forEach((partKey, i) => {
+                    const icon = this.add.image(-60 + (i * 15), 30, partKey).setScale(0.015);
+                    cardGroup.add(icon);
+                });
+            } else {
+                const cardImg = this.add.image(-40, 0, card.key).setScale(0.045);
+                cardGroup.add(cardImg);
+            }
+            
+            // 3. Text (Right side)
+            const nameText = this.add.text(5, -15, card.name, { 
+                fontSize: '11px', 
+                fill: '#ffffff', 
+                fontStyle: 'bold',
+                wordWrap: { width: 85 }
+            }).setOrigin(0, 0.5);
+            
+            const typeText = this.add.text(5, 15, card.type, { 
+                fontSize: '10px', 
+                fill: '#aaaaaa' 
+            }).setOrigin(0, 0.5);
+            
+            cardGroup.add([nameText, typeText]);
+            this.buildItemsContainer.add(cardGroup);
+
+            // Make card interactive
+            cardBg.setInteractive({ useHandCursor: true });
+            
+            // Highlight if selected
+            if (this.selectedCardIndex === index) {
+                cardBg.setStrokeStyle(4, 0xffff00);
+            }
+
+            cardBg.on('pointerdown', () => {
+                if (this.selectedCardIndex === null) {
+                    // First card selected
+                    this.selectedCardIndex = index;
+                    this.renderBuildItems();
+                } else if (this.selectedCardIndex === index) {
+                    // Deselect
+                    this.selectedCardIndex = null;
+                    this.renderBuildItems();
+                } else {
+                    // Try to connect with the already selected card
+                    this.handleCardConnection(this.selectedCardIndex, index);
+                }
+            });
+
+            cardBg.on('pointerover', () => {
+                if (this.selectedCardIndex !== index) {
+                    cardBg.setStrokeStyle(4, 0x00ffff);
+                }
+            });
+            cardBg.on('pointerout', () => {
+                if (this.selectedCardIndex !== index) {
+                    cardBg.setStrokeStyle(2, 0x00ff00);
+                }
+            });
+        });
+
+        // --- Crafting Check ---
+        const requiredParts = ['part_head', 'part_wings', 'part_tail', 'part_body'];
+        const ownedParts = cards.filter(c => c.type === 'Part').map(c => c.key);
+        const hasAllParts = requiredParts.every(p => ownedParts.includes(p));
+
+        if (hasAllParts) {
+            const craftBtn = this.add.text(0, 140, 'CRAFT NEW DRAGON', {
+                fontSize: '24px',
+                fill: '#ffffff',
+                backgroundColor: '#ff8c00', // Orange craft button
+                padding: { x: 20, y: 10 },
+                fontStyle: 'bold'
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+            craftBtn.on('pointerdown', () => {
+                // 1. Remove one of each part
+                requiredParts.forEach(p => {
+                    const idx = mainScene.ownedCards.findIndex(c => c.key === p);
+                    if (idx !== -1) mainScene.ownedCards.splice(idx, 1);
+                });
+
+                // 2. Add a new dragon to ownedDragons
+                const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water'];
+                const type = dragonTypes[Math.floor(Math.random() * dragonTypes.length)];
+                const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
+                mainScene.ownedDragons.push(newDragon);
+
+                // 3. Feedback & Close
+                this.toggleBuildMenu();
+                
+                const success = this.add.text(400, 100, `✨ CRAFTED: ${newDragon.name} ✨`, {
+                    fontSize: '28px',
+                    fill: '#00ff00',
+                    backgroundColor: '#000000',
+                    padding: { x: 20, y: 10 },
+                    stroke: '#ffffff',
+                    strokeThickness: 2
+                }).setOrigin(0.5);
+                
+                this.tweens.add({
+                    targets: success,
+                    y: 50,
+                    alpha: 0,
+                    duration: 4000,
+                    onComplete: () => success.destroy()
+                });
+            });
+
+            this.buildItemsContainer.add(craftBtn);
+        }
+    }
+    
+    handleCardConnection(indexA, indexB) {
+        const mainScene = this.scene.get('MainScene');
+        const cards = mainScene.ownedCards;
+        const cardA = cards[indexA];
+        const cardB = cards[indexB];
+
+        // 1. Check if both are parts or combos
+        const isPartA = cardA.type === 'Part' || cardA.type === 'Combo';
+        const isPartB = cardB.type === 'Part' || cardB.type === 'Combo';
+
+        if (!isPartA || !isPartB) {
+            // Can't connect non-parts
+            this.selectedCardIndex = null;
+            this.renderBuildItems();
+            return;
+        }
+
+        // 2. Extract parts from both
+        const partsA = cardA.parts || [cardA.key];
+        const partsB = cardB.parts || [cardB.key];
+
+        // 3. Check for duplicates (can't connect two heads)
+        const hasDuplicate = partsA.some(p => partsB.includes(p));
+        if (hasDuplicate) {
+            console.log('Cannot connect duplicate parts');
+            this.selectedCardIndex = null;
+            this.renderBuildItems();
+            return;
+        }
+
+        // 4. Merge
+        const mergedParts = [...partsA, ...partsB];
+        const mergedNames = mergedParts.map(p => p.replace('part_', '').toUpperCase());
+        
+        const newCard = {
+            name: `Dragon (${mergedNames.join(', ')})`,
+            type: 'Combo',
+            parts: mergedParts,
+            key: mergedParts.includes('part_body') ? 'part_body' : mergedParts[0] // Use body as icon if available
+        };
+
+        // 5. Success Feedback
+        const feedback = this.add.text(400, 300, '✨ CONNECTED! ✨', {
+            fontSize: '32px',
+            fill: '#ffff00',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5).setDepth(1000);
+
+        this.tweens.add({
+            targets: feedback,
+            y: 250,
+            alpha: 0,
+            duration: 1500,
+            onComplete: () => feedback.destroy()
+        });
+
+        // 6. Update Inventory
+        // Remove higher index first to avoid shifting
+        const high = Math.max(indexA, indexB);
+        const low = Math.min(indexA, indexB);
+        cards.splice(high, 1);
+        cards.splice(low, 1);
+        
+        // Add new card
+        cards.push(newCard);
+
+        // 7. Check if Full Dragon
+        if (mergedParts.length === 4) {
+            // Automatically craft!
+            const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water'];
+            const type = dragonTypes[Math.floor(Phaser.Math.RND.realInRange(0, dragonTypes.length)) % dragonTypes.length];
+            const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
+            
+            // Remove the combo card we just added
+            cards.pop();
+            
+            mainScene.ownedDragons.push(newDragon);
+
+            const success = this.add.text(400, 150, `✨ COMPLETE DRAGON: ${newDragon.name} ✨`, {
+                fontSize: '28px',
+                fill: '#00ff00',
+                backgroundColor: '#000000',
+                padding: { x: 20, y: 10 },
+                stroke: '#ffffff',
+                strokeThickness: 2
+            }).setOrigin(0.5).setDepth(1001);
+            
+            this.tweens.add({
+                targets: success,
+                y: 100,
+                alpha: 0,
+                duration: 4000,
+                onComplete: () => success.destroy()
+            });
+        }
+
+        // 8. Reset and Refresh
+        this.selectedCardIndex = null;
+        this.renderBuildItems();
+    }
+
+    toggleBuildMenu() {
+        const wasOpen = this.buildMenuOpen;
+        this.closeAllMenus();
+        this.buildMenuOpen = !wasOpen;
+        this.buildMenuContainer.setVisible(this.buildMenuOpen);
+        
+        if (this.buildMenuOpen) {
+            this.renderBuildItems();
+        }
+    }
+
+    closeAllMenus() {
+        const menus = [
+            { flag: 'inventoryOpen', container: 'inventoryContainer' },
+            { flag: 'storeOpen', container: 'storeContainer' },
+            { flag: 'packStoreOpen', container: 'packStoreContainer' },
+            { flag: 'dragonMenuOpen', container: 'dragonMenuContainer' },
+            { flag: 'statusOpen', container: 'statusContainer' },
+            { flag: 'selectionOpen', container: 'selectionContainer' },
+            { flag: 'buildMenuOpen', container: 'buildMenuContainer' }
+        ];
+
+        menus.forEach(menu => {
+            this[menu.flag] = false;
+            if (this[menu.container]) this[menu.container].setVisible(false);
+        });
+
+        this.selectedCardIndex = null;
     }
 }

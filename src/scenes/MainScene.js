@@ -73,6 +73,9 @@ export default class MainScene extends Phaser.Scene {
             { name: 'Phillis', key: 'dragon' }
         ];
 
+        // Owned Cards (Received from packs)
+        this.ownedCards = [];
+
         // 7. Overlap Check
         this.physics.add.overlap(this.player, this.trees, this.collectApple, null, this);
 
@@ -104,6 +107,11 @@ export default class MainScene extends Phaser.Scene {
         // Listen for fight events
         this.events.on('startFight', () => {
             this.handleFight();
+        });
+
+        // Listen for build events
+        this.events.on('buildItem', (card) => {
+            this.handleBuildItem(card);
         });
 
         // Stat Decay Timer (Every 10 seconds)
@@ -140,6 +148,46 @@ export default class MainScene extends Phaser.Scene {
         }
 
         this.events.emit('updateStats', this.stats);
+    }
+
+    handleBuildItem(card) {
+        console.log(`Building: ${card.name}`);
+
+        // Spawn position near player
+        const x = this.player.x + Phaser.Math.Between(-30, 30);
+        const y = this.player.y + Phaser.Math.Between(-30, 30);
+
+        // Create the item sprite
+        const item = this.add.sprite(x, y, card.key);
+        
+        // Scale it based on the item type (most are 0.1 - 0.15 in this game)
+        item.setScale(0); // Start at 0 for animation
+        
+        const targetScale = 0.15;
+
+        // Placement animation (Scale up and bounce)
+        this.tweens.add({
+            targets: item,
+            scale: targetScale,
+            duration: 500,
+            ease: 'Back.easeOut'
+        });
+
+        // If it's a tree or rock, we might want to add it to a group, 
+        // but for "decorations" from cards, we just leave them as sprites.
+        
+        // Special case: If it's food, maybe it disappears after a while?
+        if (card.type === 'Food') {
+            this.time.delayedCall(5000, () => {
+                this.tweens.add({
+                    targets: item,
+                    alpha: 0,
+                    scale: 0,
+                    duration: 1000,
+                    onComplete: () => item.destroy()
+                });
+            });
+        }
     }
 
     handlePetAnimation() {
