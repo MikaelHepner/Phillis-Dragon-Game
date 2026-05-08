@@ -15,185 +15,308 @@ export default class MainScene extends Phaser.Scene {
         // Set world bounds suitable for exploration
         this.physics.world.setBounds(0, 0, 2000, 2000);
 
-        // 2. Create Player (Pixel Art Dragon)
-        // Start in middle
-        this.player = this.physics.add.sprite(1000, 1000, 'dragon');
-        this.player.setCollideWorldBounds(true);
+        // 2. Create Dragons Group
+        this.dragonSprites = this.physics.add.group();
+        
+        // Function to spawn a dragon
+        this.spawnDragon = (dragonData, isPlayer = false) => {
+            const x = isPlayer ? 1000 : 1000 + Phaser.Math.Between(-100, 100);
+            const y = isPlayer ? 1000 : 1000 + Phaser.Math.Between(-100, 100);
+            
+            const dragon = this.physics.add.sprite(x, y, dragonData.key);
+            dragon.setScale(0.08);
+            dragon.setCollideWorldBounds(true);
+            dragon.setInteractive({ useHandCursor: true });
+            
+            dragon.on('pointerdown', () => {
+                this.events.emit('showDragonMenu', dragonData);
+            });
+            
+            this.dragonSprites.add(dragon);
+            
+            if (!isPlayer) {
+                // Roaming logic for companion dragons
+                this.time.addEvent({
+                    delay: 3000 + Math.random() * 2000,
+                    callback: () => {
+                        if (dragon.active) {
+                            dragon.setVelocity(
+                                Phaser.Math.Between(-30, 30),
+                                Phaser.Math.Between(-30, 30)
+                            );
+                        }
+                    },
+                    loop: true
+                });
+            }
+            
+            return dragon;
+        };
 
-        // SCALE ADJUSTMENT:
-        // Pixel art assets from AI are often 1024px.
-        // For 16-bit look on screen, we need to scale WAY down.
-        // 1024 * 0.08 ~= 82px. Good size for a character.
-        this.player.setScale(0.08);
-
-        // 3. Camera Follow
-        this.cameras.main.setBounds(0, 0, 2000, 2000);
-        this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-        this.cameras.main.setZoom(2.0); // Zoom in to appreciate the pixel art
-
-        // 4. Input (Dragon Menu)
-        this.player.setInteractive({ useHandCursor: true });
-        this.player.on('pointerdown', () => {
-            console.log('Dragon clicked!');
-            this.events.emit('showDragonMenu');
+        // 3. Initialize Owned Dragons with individual stats
+        this.ownedDragons = [
+            { 
+                name: 'Phillis', 
+                key: 'dragon',
+                stats: { love: 20, hunger: 80, energy: 100, level: 1, xp: 0 }
+            }
+        ];
+        
+        // Spawn them (First one is the "player" for camera follow)
+        this.ownedDragons.forEach((d, index) => {
+            const sprite = this.spawnDragon(d, index === 0);
+            if (index === 0) this.player = sprite;
         });
 
-        // 5. Trees (Physics Group for Overlap)
-        this.trees = this.physics.add.staticGroup();
+        // 4. Camera Follow
+        this.cameras.main.setBounds(0, 0, 2000, 2000);
+        this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+        this.cameras.main.setZoom(2.0);
 
+        // 5. Trees (Physics Group)
+        this.trees = this.physics.add.staticGroup();
         for (let i = 0; i < 30; i++) {
             let x, y, distance;
             do {
                 x = Phaser.Math.Between(200, 1800);
                 y = Phaser.Math.Between(200, 1800);
                 distance = Phaser.Math.Distance.Between(x, y, 1000, 1000);
-            } while (distance < 150); // Keep trees away from spawn point
-
-            const tree = this.trees.create(x, y, 'tree');
-            tree.setScale(0.15);
-            tree.refreshBody();
+            } while (distance < 300); // Increased buffer to prevent spawning on dragons
+            const tree = this.trees.create(x, y, 'tree').setScale(0.15).refreshBody();
         }
 
-        // 6. Inventory & Stats System
+        // 6. Inventory System
         this.apples = 0;
-        this.lastAppleTime = 0;
         this.coins = 0;
-
-        // Dragon Stats
-        this.stats = {
-            love: 20,
-            hunger: 80,
-            energy: 100,
-            level: 1,
-            xp: 0
-        };
-
-        // Owned Dragons (Team selection will use this)
-        this.ownedDragons = [
-            { name: 'Phillis', key: 'dragon' }
-        ];
-
-        // Owned Cards (Received from packs)
+        this.wood = 0;
+        this.fish = 0;
         this.ownedCards = [];
+        
+        // Prevent instant collection on refresh
+        this.lastAppleTime = this.time.now + 1000; 
 
-        // 7. Overlap Check
-        this.physics.add.overlap(this.player, this.trees, this.collectApple, null, this);
-
-        // 8. Rocks (Physics Group for Overlap)
+        // 7. Overlap Checks
+        this.physics.add.overlap(this.dragonSprites, this.trees, this.collectApple, null, this);
+        
+        // 8. Rocks
         this.rocks = this.physics.add.staticGroup();
-
-        for (let i = 0; i < 20; i++) { // Spawn 20 rocks
+        for (let i = 0; i < 20; i++) {
             let x, y, distance;
             do {
                 x = Phaser.Math.Between(200, 1800);
                 y = Phaser.Math.Between(200, 1800);
                 distance = Phaser.Math.Distance.Between(x, y, 1000, 1000);
-            } while (distance < 150);
-
-            const rock = this.rocks.create(x, y, 'rock');
-            rock.setScale(0.15);
-            rock.refreshBody();
+            } while (distance < 300);
+            const rock = this.rocks.create(x, y, 'rock').setScale(0.15).refreshBody();
         }
-
-        this.physics.add.overlap(this.player, this.rocks, this.breakRock, null, this);
+        this.physics.add.overlap(this.dragonSprites, this.rocks, this.breakRock, null, this);
         
-        // Listen for pet events
-        this.events.on('petDragon', () => {
-            this.stats.love = Math.min(100, this.stats.love + 5);
-            this.events.emit('updateStats', this.stats);
-            this.handlePetAnimation();
+        // Listen for events
+        this.events.on('dragonAdded', (newDragon) => {
+            if (!newDragon.stats) {
+                newDragon.stats = { love: 10, hunger: 50, energy: 100, level: 1, xp: 0 };
+            }
+            this.spawnDragon(newDragon);
         });
 
-        // Listen for fight events
-        this.events.on('startFight', () => {
-            this.handleFight();
+        this.events.on('petDragon', (dragon) => {
+            if (dragon && dragon.stats) {
+                dragon.stats.love = Math.min(100, dragon.stats.love + 5);
+                this.events.emit('updateStats', dragon.stats);
+                this.handlePetAnimation(dragon);
+            }
         });
 
-        // Listen for build events
-        this.events.on('buildItem', (card) => {
-            this.handleBuildItem(card);
+        this.events.on('giveTree', (data) => {
+            this.handleWoodGeneration(data.dragon, data.card);
         });
 
-        // Stat Decay Timer (Every 10 seconds)
+        this.events.on('giveFishingRod', (data) => {
+            this.handleFishGeneration(data.dragon, data.card);
+        });
+
+        this.events.on('giveAppleCard', (data) => {
+            this.handleAppleGeneration(data.dragon, data.card);
+        });
+
+        // Global Stat Decay (Affects all owned dragons)
         this.time.addEvent({
-            delay: 10000,
+            delay: 15000,
             callback: () => {
-                this.stats.hunger = Math.max(0, this.stats.hunger - 2);
-                this.stats.energy = Math.max(0, this.stats.energy - 1);
-                this.events.emit('updateStats', this.stats);
+                this.ownedDragons.forEach(d => {
+                    if (d.stats) {
+                        d.stats.hunger = Math.max(0, d.stats.hunger - 1);
+                        d.stats.energy = Math.max(0, d.stats.energy - 1);
+                    }
+                });
+                // Note: UIScene will need to refresh the active dragon's bars
+                this.events.emit('refreshActiveStats');
             },
             loop: true
         });
 
-        // Launch UI Scene now that we are ready
         this.scene.launch('UIScene');
     }
 
-    handleFight() {
-        if (this.stats.energy < 20) {
-            this.events.emit('updateStats', this.stats);
+    handleFight(dragon) {
+        if (!dragon || !dragon.stats) return;
+        if (dragon.stats.energy < 20) {
+            this.events.emit('updateStats', dragon.stats);
             return;
         }
 
         // 1. Spend Energy
-        this.stats.energy -= 20;
+        dragon.stats.energy -= 20;
 
         // 2. Gain XP
-        this.stats.xp += 35;
+        dragon.stats.xp += 35;
         
         // Check Level Up
-        if (this.stats.xp >= 100) {
-            this.stats.xp -= 100;
-            this.stats.level++;
+        if (dragon.stats.xp >= 100) {
+            dragon.stats.xp -= 100;
+            dragon.stats.level++;
         }
 
-        this.events.emit('updateStats', this.stats);
+        this.events.emit('updateStats', dragon.stats);
     }
 
-    handleBuildItem(card) {
-        console.log(`Building: ${card.name}`);
+    handleWoodGeneration(dragonData, card) {
+        // Find the sprite
+        const sprite = this.dragonSprites.getChildren().find(s => s.texture.key === dragonData.key);
+        if (!sprite) return;
 
-        // Spawn position near player
-        const x = this.player.x + Phaser.Math.Between(-30, 30);
-        const y = this.player.y + Phaser.Math.Between(-30, 30);
-
-        // Create the item sprite
-        const item = this.add.sprite(x, y, card.key);
-        
-        // Scale it based on the item type (most are 0.1 - 0.15 in this game)
-        item.setScale(0); // Start at 0 for animation
-        
-        const targetScale = 0.15;
-
-        // Placement animation (Scale up and bounce)
+        // Visual feedback on dragon
+        const woodIcon = this.add.image(sprite.x, sprite.y - 40, 'tree').setScale(0.05);
         this.tweens.add({
-            targets: item,
-            scale: targetScale,
-            duration: 500,
-            ease: 'Back.easeOut'
+            targets: woodIcon,
+            y: '-=20',
+            duration: 1000,
+            yoyo: true,
+            repeat: -1
         });
 
-        // If it's a tree or rock, we might want to add it to a group, 
-        // but for "decorations" from cards, we just leave them as sprites.
-        
-        // Special case: If it's food, maybe it disappears after a while?
-        if (card.type === 'Food') {
-            this.time.delayedCall(5000, () => {
+        const woodTimer = this.time.addEvent({
+            delay: 5000,
+            callback: () => {
+                this.wood++;
+                this.events.emit('updateWoodCount', this.wood);
+                
+                const text = this.add.text(sprite.x, sprite.y - 60, '+1 Wood', {
+                    fontSize: '16px',
+                    fill: '#8b4513',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
                 this.tweens.add({
-                    targets: item,
+                    targets: text,
+                    y: '-=30',
                     alpha: 0,
-                    scale: 0,
-                    duration: 1000,
-                    onComplete: () => item.destroy()
+                    duration: 2000,
+                    onComplete: () => text.destroy()
                 });
-            });
-        }
+            },
+            repeat: 11
+        });
+
+        this.time.delayedCall(60000, () => {
+            woodIcon.destroy();
+        });
     }
 
-    handlePetAnimation() {
+    handleFishGeneration(dragonData, card) {
+        // Find the sprite
+        const sprite = this.dragonSprites.getChildren().find(s => s.texture.key === dragonData.key);
+        if (!sprite) return;
+
+        // Visual feedback on dragon
+        const fishIcon = this.add.image(sprite.x, sprite.y - 40, 'fishing_rod').setScale(0.08);
+        this.tweens.add({
+            targets: fishIcon,
+            y: '-=20',
+            duration: 1000,
+            yoyo: true,
+            repeat: -1
+        });
+
+        const fishTimer = this.time.addEvent({
+            delay: 5000,
+            callback: () => {
+                this.fish++;
+                this.events.emit('updateFishCount', this.fish);
+                
+                const text = this.add.text(sprite.x, sprite.y - 60, '+1 Fish', {
+                    fontSize: '16px',
+                    fill: '#00ffff',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                this.tweens.add({
+                    targets: text,
+                    y: '-=30',
+                    alpha: 0,
+                    duration: 2000,
+                    onComplete: () => text.destroy()
+                });
+            },
+            repeat: 11
+        });
+
+        this.time.delayedCall(60000, () => {
+            fishIcon.destroy();
+        });
+    }
+
+    handleAppleGeneration(dragonData, card) {
+        // Find the sprite
+        const sprite = this.dragonSprites.getChildren().find(s => s.texture.key === dragonData.key);
+        if (!sprite) return;
+
+        // Visual feedback on dragon
+        const appleIcon = this.add.image(sprite.x, sprite.y - 40, 'apple').setScale(0.08);
+        this.tweens.add({
+            targets: appleIcon,
+            y: '-=20',
+            duration: 1000,
+            yoyo: true,
+            repeat: -1
+        });
+
+        const appleTimer = this.time.addEvent({
+            delay: 5000,
+            callback: () => {
+                this.apples++;
+                this.events.emit('updateApples', this.apples);
+                
+                const text = this.add.text(sprite.x, sprite.y - 60, '+1 Apple', {
+                    fontSize: '16px',
+                    fill: '#ff0000',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                this.tweens.add({
+                    targets: text,
+                    y: '-=30',
+                    alpha: 0,
+                    duration: 2000,
+                    onComplete: () => text.destroy()
+                });
+            },
+            repeat: 11
+        });
+
+        this.time.delayedCall(60000, () => {
+            appleIcon.destroy();
+        });
+    }
+
+    handlePetAnimation(dragonData) {
+        // Find the sprite corresponding to this dragonData
+        const sprite = this.dragonSprites.getChildren().find(s => s.texture.key === dragonData.key);
+        if (!sprite) return;
+
         // 1. Dragon "Happy" Tween (Bounce/Squash)
         this.tweens.add({
-            targets: this.player,
+            targets: sprite,
             scaleX: 0.09,
             scaleY: 0.07,
             duration: 100,
@@ -204,13 +327,13 @@ export default class MainScene extends Phaser.Scene {
 
         // 2. Spawn Hearts
         for (let i = 0; i < 3; i++) {
-            const heart = this.add.image(this.player.x, this.player.y - 20, 'heart');
+            const heart = this.add.image(sprite.x, sprite.y - 20, 'heart');
             heart.setScale(0.05);
             heart.setAlpha(1);
             
             // Randomize heart trajectory
-            const destX = this.player.x + Phaser.Math.Between(-50, 50);
-            const destY = this.player.y - Phaser.Math.Between(100, 150);
+            const destX = sprite.x + Phaser.Math.Between(-50, 50);
+            const destY = sprite.y - Phaser.Math.Between(100, 150);
             
             this.tweens.add({
                 targets: heart,
@@ -237,7 +360,7 @@ export default class MainScene extends Phaser.Scene {
             this.lastAppleTime = now;
 
             // Emit Event to UIScene
-            this.events.emit('updateAppleCount', this.apples);
+            this.events.emit('updateApples', this.apples);
             this.events.emit('collectAppleAnim');
         }
     }

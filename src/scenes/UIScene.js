@@ -75,7 +75,7 @@ export default class UIScene extends Phaser.Scene {
         // Better pattern: Listen on the main scene's event emitter once it exists.
         // But since both are started, let's just use the game-wide registry or get the scene.
 
-        mainScene.events.on('updateAppleCount', (count) => {
+        mainScene.events.on('updateApples', (count) => {
             this.updateAppleCount(count);
         });
 
@@ -87,13 +87,30 @@ export default class UIScene extends Phaser.Scene {
             this.updateCoinCount(count);
         });
 
+        mainScene.events.on('updateWoodCount', (count) => {
+            this.updateWoodCount(count);
+        });
+
+        mainScene.events.on('updateFishCount', (count) => {
+            this.updateFishCount(count);
+        });
+
         this.createCoinHUD();
+        this.createWoodHUD();
+        this.createFishHUD();
         this.createStore();
         this.createDragonMenu();
 
-        mainScene.events.on('showDragonMenu', () => {
-            console.log('Event received in UIScene');
+        mainScene.events.on('showDragonMenu', (dragon) => {
+            console.log('Event received in UIScene for:', dragon.name);
+            this.activeDragon = dragon;
             this.toggleDragonMenu();
+        });
+
+        mainScene.events.on('refreshActiveStats', () => {
+            if (this.activeDragon && this.activeDragon.stats) {
+                this.updateStatusBars(this.activeDragon.stats);
+            }
         });
 
         // Listen for stats updates
@@ -102,7 +119,7 @@ export default class UIScene extends Phaser.Scene {
         });
 
         // Use default stats if mainScene hasn't initialized them yet
-        const initialStats = mainScene.stats || { love: 20, hunger: 80, energy: 100, level: 1 };
+        const initialStats = (this.activeDragon && this.activeDragon.stats) || { love: 20, hunger: 80, energy: 100, level: 1 };
         this.createStatusPage(initialStats);
         this.createFighterSelection();
         this.createPackStore();
@@ -156,9 +173,19 @@ export default class UIScene extends Phaser.Scene {
 
     createStore() {
         // Shopping Cart Icon (Bottom Right)
-        this.cart = this.add.image(750, 550, 'cart'); // Bottom right
+        this.cart = this.add.image(750, 550, 'cart'); 
         this.cart.setScale(0.15);
         this.cart.setInteractive({ useHandCursor: true });
+
+        // Crafting Button (Hammer icon placeholder or text)
+        this.craftBtn = this.add.container(750, 670);
+        const craftBg = this.add.circle(0, 0, 35, 0x4a4a4a).setInteractive({ useHandCursor: true });
+        const craftText = this.add.text(0, 0, '⚒️', { fontSize: '32px' }).setOrigin(0.5);
+        this.craftBtn.add([craftBg, craftText]);
+        
+        craftBg.on('pointerdown', () => this.toggleBuildMenu());
+        craftBg.on('pointerover', () => craftBg.setFillStyle(0x666666));
+        craftBg.on('pointerout', () => craftBg.setFillStyle(0x4a4a4a));
 
         // Store Window (Hidden by default)
         this.storeOpen = false;
@@ -262,6 +289,7 @@ export default class UIScene extends Phaser.Scene {
         if (mainScene.coins >= item.cost) {
             mainScene.coins -= item.cost;
             mainScene.ownedDragons.push({ name: item.name, key: item.key });
+            mainScene.events.emit('dragonAdded', { name: item.name, key: item.key });
             
             // Update HUD
             this.updateCoinCount(mainScene.coins);
@@ -299,6 +327,46 @@ export default class UIScene extends Phaser.Scene {
 
     updateCoinCount(count) {
         if (this.coinText) this.coinText.setText(count.toString());
+    }
+
+    createWoodHUD() {
+        // Wood Icon (Below Coin HUD)
+        this.woodIcon = this.add.image(750, 340, 'tree'); 
+        this.woodIcon.setScale(0.08);
+
+        // Wood Text
+        this.woodText = this.add.text(750, 340, '0', {
+            fontSize: '26px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#8b4513', // Brown wood color
+            stroke: '#000000',
+            strokeThickness: 4,
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+    }
+
+    updateWoodCount(count) {
+        if (this.woodText) this.woodText.setText(count.toString());
+    }
+
+    createFishHUD() {
+        // Fish Icon (Below Wood HUD)
+        this.fishIcon = this.add.image(750, 460, 'fishing_rod'); 
+        this.fishIcon.setScale(0.08);
+
+        // Fish Text
+        this.fishText = this.add.text(750, 460, '0', {
+            fontSize: '26px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#00ffff', // Cyan fish color
+            stroke: '#000000',
+            strokeThickness: 4,
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+    }
+
+    updateFishCount(count) {
+        if (this.fishText) this.fishText.setText(count.toString());
     }
 
     createPackStore() {
@@ -400,6 +468,7 @@ export default class UIScene extends Phaser.Scene {
             { name: 'Delicious Food', type: 'Food', key: 'apple' },
             { name: 'Ancient Tree', type: 'Trees', key: 'tree' },
             { name: 'Fishing Rod', type: 'Fishing', key: 'fishing_rod' },
+            { name: 'Apple Seeds', type: 'Farming', key: 'apple' },
             { name: 'Dragon Head', type: 'Part', key: 'part_head' },
             { name: 'Dragon Wings', type: 'Part', key: 'part_wings' },
             { name: 'Dragon Tail', type: 'Part', key: 'part_tail' },
@@ -494,7 +563,7 @@ export default class UIScene extends Phaser.Scene {
         this.dragonMenuContainer.add(title);
 
         // Options
-        const options = ['Feed', 'Pet', 'Fight', 'Build', 'Status', 'Close'];
+        const options = ['Feed', 'Pet', 'Fight', 'Crafting', 'Status', 'Close'];
         options.forEach((opt, index) => {
             const btn = this.add.text(0, -100 + (index * 60), opt, {
                 fontSize: '22px',
@@ -518,11 +587,11 @@ export default class UIScene extends Phaser.Scene {
                         this.toggleDragonMenu();
                     } else if (opt === 'Pet') {
                         const mainScene = this.scene.get('MainScene');
-                        mainScene.events.emit('petDragon');
+                        mainScene.events.emit('petDragon', this.activeDragon);
                         this.toggleDragonMenu();
                     } else if (opt === 'Fight') {
                         this.toggleFighterSelection();
-                    } else if (opt === 'Build') {
+                    } else if (opt === 'Crafting') {
                         this.toggleBuildMenu();
                     } else if (opt === 'Status') {
                         this.toggleStatusPage();
@@ -543,17 +612,12 @@ export default class UIScene extends Phaser.Scene {
 
     handleFeed() {
         const mainScene = this.scene.get('MainScene');
-        if (mainScene.apples > 0) {
+        if (mainScene.apples > 0 && this.activeDragon) {
             mainScene.apples--;
             
-            // Ensure stats exist before updating
-            if (!mainScene.stats) {
-                mainScene.stats = { love: 20, hunger: 80, energy: 100, level: 1 };
-            }
-            
-            mainScene.stats.hunger = Math.min(100, mainScene.stats.hunger + 15);
-            mainScene.events.emit('updateAppleCount', mainScene.apples);
-            mainScene.events.emit('updateStats', mainScene.stats);
+            this.activeDragon.stats.hunger = Math.min(100, this.activeDragon.stats.hunger + 15);
+            mainScene.events.emit('updateApples', mainScene.apples);
+            mainScene.events.emit('updateStats', this.activeDragon.stats);
             
             // Add a little feedback
             const feedback = this.add.text(400, 200, 'Yum! +1 Happy', {
@@ -656,6 +720,10 @@ export default class UIScene extends Phaser.Scene {
         this.closeAllMenus();
         this.statusOpen = !wasOpen;
         this.statusContainer.setVisible(this.statusOpen);
+        
+        if (this.statusOpen && this.activeDragon && this.activeDragon.stats) {
+            this.updateStatusBars(this.activeDragon.stats);
+        }
     }
 
     updateStatusBars(stats) {
@@ -883,12 +951,11 @@ export default class UIScene extends Phaser.Scene {
         const bg = this.add.rectangle(0, 0, 700, 450, 0x0a1a0a, 0.95);
         bg.setStrokeStyle(4, 0x00ff00);
         this.buildMenuContainer.add(bg);
-
         // Title
-        const title = this.add.text(0, -160, 'Build Menu', {
+        const title = this.add.text(0, -160, 'CRAFTING CENTER', {
             fontSize: '32px',
             fontFamily: '"Courier New", Courier, monospace',
-            fill: '#00ff00',
+            fill: '#00ffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
         this.buildMenuContainer.add(title);
@@ -921,101 +988,166 @@ export default class UIScene extends Phaser.Scene {
         const mainScene = this.scene.get('MainScene');
         const cards = mainScene.ownedCards || [];
 
+        // Grid layout
         if (cards.length === 0) {
-            const emptyText = this.add.text(0, 0, 'No cards collected yet.\nOpen packs in the Store!', {
+            const emptyText = this.add.text(0, -40, 'No cards collected yet.\nOpen packs in the Store!', {
                 fontSize: '20px',
                 fill: '#aaaaaa',
                 align: 'center'
             }).setOrigin(0.5);
             this.buildItemsContainer.add(emptyText);
-            return;
+        } else {
+            const cols = 4;
+            const spacingX = 160;
+            const spacingY = 100;
+            const startX = -((cols - 1) * spacingX) / 2;
+            const startY = -40;
+
+            cards.forEach((card, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+                const x = startX + col * spacingX;
+                const y = startY + row * spacingY;
+
+                const cardGroup = this.add.container(x, y);
+                
+                // 1. Add Background FIRST
+                const cardBg = this.add.rectangle(0, 0, 140, 80, 0x1a1a1a).setStrokeStyle(2, 0x00ff00);
+                cardGroup.add(cardBg);
+
+                // 2. Icon rendering
+                if (card.type === 'Combo' && card.parts) {
+                    const comboKey = card.parts.length === 2 ? 'combo_2' : (card.parts.length === 3 ? 'combo_3' : card.key);
+                    const comboImg = this.add.image(-40, 0, comboKey).setScale(0.045);
+                    cardGroup.add(comboImg);
+                    
+                    card.parts.forEach((partKey, i) => {
+                        const icon = this.add.image(-60 + (i * 15), 30, partKey).setScale(0.015);
+                        cardGroup.add(icon);
+                    });
+                } else {
+                    const cardImg = this.add.image(-40, 0, card.key).setScale(0.045);
+                    cardGroup.add(cardImg);
+                }
+                
+                // 3. Text (Right side)
+                const nameText = this.add.text(5, -15, card.name, { 
+                    fontSize: '11px', 
+                    fill: '#ffffff', 
+                    fontStyle: 'bold',
+                    wordWrap: { width: 85 }
+                }).setOrigin(0, 0.5);
+                
+                const typeText = this.add.text(5, 15, card.type, { 
+                    fontSize: '10px', 
+                    fill: '#aaaaaa' 
+                }).setOrigin(0, 0.5);
+                
+                cardGroup.add([nameText, typeText]);
+                this.buildItemsContainer.add(cardGroup);
+
+                // Make card interactive
+                cardBg.setInteractive({ useHandCursor: true });
+                if (this.selectedCardIndex === index) {
+                    cardBg.setStrokeStyle(4, 0xffff00);
+                }
+
+                cardBg.on('pointerdown', () => {
+                    if (this.selectedCardIndex === null) {
+                        this.selectedCardIndex = index;
+                        this.renderBuildItems();
+                    } else if (this.selectedCardIndex === index) {
+                        this.selectedCardIndex = null;
+                        this.renderBuildItems();
+                    } else {
+                        this.handleCardConnection(this.selectedCardIndex, index);
+                    }
+                });
+
+                cardBg.on('pointerover', () => {
+                    if (this.selectedCardIndex !== index) {
+                        cardBg.setStrokeStyle(4, 0x00ffff);
+                    }
+                });
+                cardBg.on('pointerout', () => {
+                    if (this.selectedCardIndex !== index) {
+                        cardBg.setStrokeStyle(2, 0x00ff00);
+                    }
+                });
+            });
         }
 
-        // Grid layout
-        const cols = 4;
-        const spacingX = 160;
-        const spacingY = 100;
-        const startX = -((cols - 1) * spacingX) / 2;
-        const startY = -40;
+        // --- Owned Dragons Section (Bottom) ---
+        const dragonSectionY = 100; // Position below the cards
+        const dragonTitle = this.add.text(0, dragonSectionY - 20, 'YOUR DRAGONS', {
+            fontSize: '18px',
+            fill: '#00ffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.buildItemsContainer.add(dragonTitle);
 
-        cards.forEach((card, index) => {
-            const col = index % cols;
-            const row = Math.floor(index / cols);
-            const x = startX + col * spacingX;
-            const y = startY + row * spacingY;
+        const dragons = mainScene.ownedDragons || [];
+        dragons.forEach((dragon, i) => {
+            const dx = -((dragons.length - 1) * 80) / 2 + (i * 80);
+            const dy = dragonSectionY + 25;
 
-            const cardGroup = this.add.container(x, y);
+            const dragonIcon = this.add.image(dx, dy, dragon.key).setScale(0.04);
+            dragonIcon.setInteractive({ useHandCursor: true });
             
-            // 1. Add Background FIRST
-            const cardBg = this.add.rectangle(0, 0, 140, 80, 0x1a1a1a).setStrokeStyle(2, 0x00ff00);
-            cardGroup.add(cardBg);
+            const dragonName = this.add.text(dx, dy + 25, dragon.name, {
+                fontSize: '10px',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
 
-            // 2. Icon rendering
-            if (card.type === 'Combo' && card.parts) {
-                // Use dedicated combo images if available
-                const comboKey = card.parts.length === 2 ? 'combo_2' : (card.parts.length === 3 ? 'combo_3' : card.key);
-                const comboImg = this.add.image(-40, 0, comboKey).setScale(0.045);
-                cardGroup.add(comboImg);
-                
-                // Show tiny part indicators on the bottom left
-                card.parts.forEach((partKey, i) => {
-                    const icon = this.add.image(-60 + (i * 15), 30, partKey).setScale(0.015);
-                    cardGroup.add(icon);
-                });
-            } else {
-                const cardImg = this.add.image(-40, 0, card.key).setScale(0.045);
-                cardGroup.add(cardImg);
-            }
-            
-            // 3. Text (Right side)
-            const nameText = this.add.text(5, -15, card.name, { 
-                fontSize: '11px', 
-                fill: '#ffffff', 
-                fontStyle: 'bold',
-                wordWrap: { width: 85 }
-            }).setOrigin(0, 0.5);
-            
-            const typeText = this.add.text(5, 15, card.type, { 
-                fontSize: '10px', 
-                fill: '#aaaaaa' 
-            }).setOrigin(0, 0.5);
-            
-            cardGroup.add([nameText, typeText]);
-            this.buildItemsContainer.add(cardGroup);
+            dragonIcon.on('pointerdown', () => {
+                if (this.selectedCardIndex !== null) {
+                    const mainScene = this.scene.get('MainScene');
+                    const card = mainScene.ownedCards[this.selectedCardIndex];
+                    
+                    if (card.type === 'Trees') {
+                        // 1. Remove card
+                        mainScene.ownedCards.splice(this.selectedCardIndex, 1);
+                        this.selectedCardIndex = null;
+                        
+                        // 2. Emit Event
+                        mainScene.events.emit('giveTree', { dragon: dragon, card: card });
+                        
+                        // 3. Feedback
+                        this.showGiveFeedback(card.name, dragon.name);
 
-            // Make card interactive
-            cardBg.setInteractive({ useHandCursor: true });
-            
-            // Highlight if selected
-            if (this.selectedCardIndex === index) {
-                cardBg.setStrokeStyle(4, 0xffff00);
-            }
+                        // 4. Refresh
+                        this.renderBuildItems();
+                    } else if (card.type === 'Fishing') {
+                        // 1. Remove card
+                        mainScene.ownedCards.splice(this.selectedCardIndex, 1);
+                        this.selectedCardIndex = null;
+                        
+                        // 2. Emit Event
+                        mainScene.events.emit('giveFishingRod', { dragon: dragon, card: card });
+                        
+                        // 3. Feedback
+                        this.showGiveFeedback(card.name, dragon.name);
 
-            cardBg.on('pointerdown', () => {
-                if (this.selectedCardIndex === null) {
-                    // First card selected
-                    this.selectedCardIndex = index;
-                    this.renderBuildItems();
-                } else if (this.selectedCardIndex === index) {
-                    // Deselect
-                    this.selectedCardIndex = null;
-                    this.renderBuildItems();
-                } else {
-                    // Try to connect with the already selected card
-                    this.handleCardConnection(this.selectedCardIndex, index);
+                        // 4. Refresh
+                        this.renderBuildItems();
+                    } else if (card.type === 'Farming' || card.type === 'Food') {
+                        // 1. Remove card
+                        mainScene.ownedCards.splice(this.selectedCardIndex, 1);
+                        this.selectedCardIndex = null;
+                        
+                        // 2. Emit Event
+                        mainScene.events.emit('giveAppleCard', { dragon: dragon, card: card });
+                        
+                        // 3. Feedback
+                        this.showGiveFeedback(card.name, dragon.name);
+
+                        // 4. Refresh
+                        this.renderBuildItems();
+                    }
                 }
             });
 
-            cardBg.on('pointerover', () => {
-                if (this.selectedCardIndex !== index) {
-                    cardBg.setStrokeStyle(4, 0x00ffff);
-                }
-            });
-            cardBg.on('pointerout', () => {
-                if (this.selectedCardIndex !== index) {
-                    cardBg.setStrokeStyle(2, 0x00ff00);
-                }
-            });
+            this.buildItemsContainer.add([dragonIcon, dragonName]);
         });
 
         // --- Crafting Check ---
@@ -1024,28 +1156,26 @@ export default class UIScene extends Phaser.Scene {
         const hasAllParts = requiredParts.every(p => ownedParts.includes(p));
 
         if (hasAllParts) {
-            const craftBtn = this.add.text(0, 140, 'CRAFT NEW DRAGON', {
-                fontSize: '24px',
+            const craftBtn = this.add.text(0, 165, 'CRAFT NEW DRAGON', {
+                fontSize: '20px',
                 fill: '#ffffff',
-                backgroundColor: '#ff8c00', // Orange craft button
-                padding: { x: 20, y: 10 },
+                backgroundColor: '#ff8c00',
+                padding: { x: 15, y: 8 },
                 fontStyle: 'bold'
             }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
             craftBtn.on('pointerdown', () => {
-                // 1. Remove one of each part
                 requiredParts.forEach(p => {
                     const idx = mainScene.ownedCards.findIndex(c => c.key === p);
                     if (idx !== -1) mainScene.ownedCards.splice(idx, 1);
                 });
 
-                // 2. Add a new dragon to ownedDragons
                 const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water'];
                 const type = dragonTypes[Math.floor(Math.random() * dragonTypes.length)];
                 const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
                 mainScene.ownedDragons.push(newDragon);
+                mainScene.events.emit('dragonAdded', newDragon);
 
-                // 3. Feedback & Close
                 this.toggleBuildMenu();
                 
                 const success = this.add.text(400, 100, `✨ CRAFTED: ${newDragon.name} ✨`, {
@@ -1068,6 +1198,22 @@ export default class UIScene extends Phaser.Scene {
 
             this.buildItemsContainer.add(craftBtn);
         }
+    }
+
+    showGiveFeedback(cardName, dragonName) {
+        const feedback = this.add.text(400, 300, `Gave ${cardName} to ${dragonName}!`, {
+            fontSize: '22px',
+            fill: '#00ff00',
+            backgroundColor: '#000000'
+        }).setOrigin(0.5).setDepth(2000);
+        
+        this.tweens.add({
+            targets: feedback,
+            y: 250,
+            alpha: 0,
+            duration: 2000,
+            onComplete: () => feedback.destroy()
+        });
     }
     
     handleCardConnection(indexA, indexB) {
@@ -1149,6 +1295,7 @@ export default class UIScene extends Phaser.Scene {
             cards.pop();
             
             mainScene.ownedDragons.push(newDragon);
+            mainScene.events.emit('dragonAdded', newDragon);
 
             const success = this.add.text(400, 150, `✨ COMPLETE DRAGON: ${newDragon.name} ✨`, {
                 fontSize: '28px',
