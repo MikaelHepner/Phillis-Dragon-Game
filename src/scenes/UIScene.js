@@ -10,12 +10,12 @@ export default class UIScene extends Phaser.Scene {
         // This scene will NOT zoom, so (750, 50) is actually top-right.
 
         // Backpack Icon
-        this.backpack = this.add.image(750, 100, 'backpack');
+        this.backpack = this.add.image(750, 60, 'backpack');
         this.backpack.setScale(0.15);
         this.backpack.setInteractive({ useHandCursor: true });
 
         // Apple Counter Text (HUD)
-        this.appleText = this.add.text(750, 100, '0', {
+        this.appleText = this.add.text(750, 60, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace', // Retro font look
             fill: '#ffffff',
@@ -99,6 +99,8 @@ export default class UIScene extends Phaser.Scene {
         this.createWoodHUD();
         this.createFishHUD();
         this.createStore();
+        this.createCraftingMenu();
+        this.createBuildMenu();
         this.createDragonMenu();
 
         mainScene.events.on('showDragonMenu', (dragon) => {
@@ -123,7 +125,6 @@ export default class UIScene extends Phaser.Scene {
         this.createStatusPage(initialStats);
         this.createFighterSelection();
         this.createPackStore();
-        this.createBuildMenu();
         this.selectedCardIndex = null;
     }
 
@@ -157,11 +158,11 @@ export default class UIScene extends Phaser.Scene {
 
     createCoinHUD() {
         // Coin Icon (Below Backpack)
-        this.coinIcon = this.add.image(750, 220, 'coin'); // Under the backpack
+        this.coinIcon = this.add.image(750, 140, 'coin'); // Under the backpack
         this.coinIcon.setScale(0.15);
 
         // Coin Text
-        this.coinText = this.add.text(750, 220, '0', {
+        this.coinText = this.add.text(750, 140, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#FFD700', // Gold color
@@ -172,20 +173,30 @@ export default class UIScene extends Phaser.Scene {
     }
 
     createStore() {
-        // Shopping Cart Icon (Bottom Right)
-        this.cart = this.add.image(750, 550, 'cart'); 
+        // Shopping Cart Icon (Bottom Right area)
+        this.cart = this.add.image(750, 390, 'cart'); 
         this.cart.setScale(0.15);
         this.cart.setInteractive({ useHandCursor: true });
 
-        // Crafting Button (Hammer icon placeholder or text)
-        this.craftBtn = this.add.container(750, 670);
+        // Crafting Button (Hammer icon)
+        this.craftBtn = this.add.container(750, 480);
         const craftBg = this.add.circle(0, 0, 35, 0x4a4a4a).setInteractive({ useHandCursor: true });
         const craftText = this.add.text(0, 0, '⚒️', { fontSize: '32px' }).setOrigin(0.5);
         this.craftBtn.add([craftBg, craftText]);
         
-        craftBg.on('pointerdown', () => this.toggleBuildMenu());
+        craftBg.on('pointerdown', () => this.toggleCraftingMenu());
         craftBg.on('pointerover', () => craftBg.setFillStyle(0x666666));
         craftBg.on('pointerout', () => craftBg.setFillStyle(0x4a4a4a));
+
+        // Build Button (House/Construction icon)
+        this.buildBtn = this.add.container(750, 570);
+        const buildBg = this.add.circle(0, 0, 35, 0x1e3a5f).setInteractive({ useHandCursor: true });
+        const buildText = this.add.text(0, 0, '🏗️', { fontSize: '32px' }).setOrigin(0.5);
+        this.buildBtn.add([buildBg, buildText]);
+        
+        buildBg.on('pointerdown', () => this.toggleBuildMenu());
+        buildBg.on('pointerover', () => buildBg.setFillStyle(0x2a508a));
+        buildBg.on('pointerout', () => buildBg.setFillStyle(0x1e3a5f));
 
         // Store Window (Hidden by default)
         this.storeOpen = false;
@@ -331,11 +342,11 @@ export default class UIScene extends Phaser.Scene {
 
     createWoodHUD() {
         // Wood Icon (Below Coin HUD)
-        this.woodIcon = this.add.image(750, 340, 'tree'); 
+        this.woodIcon = this.add.image(750, 220, 'tree'); 
         this.woodIcon.setScale(0.08);
 
         // Wood Text
-        this.woodText = this.add.text(750, 340, '0', {
+        this.woodText = this.add.text(750, 220, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#8b4513', // Brown wood color
@@ -351,11 +362,11 @@ export default class UIScene extends Phaser.Scene {
 
     createFishHUD() {
         // Fish Icon (Below Wood HUD)
-        this.fishIcon = this.add.image(750, 460, 'fishing_rod'); 
+        this.fishIcon = this.add.image(750, 300, 'fishing_rod'); 
         this.fishIcon.setScale(0.08);
 
         // Fish Text
-        this.fishText = this.add.text(750, 460, '0', {
+        this.fishText = this.add.text(750, 300, '0', {
             fontSize: '26px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#00ffff', // Cyan fish color
@@ -563,7 +574,7 @@ export default class UIScene extends Phaser.Scene {
         this.dragonMenuContainer.add(title);
 
         // Options
-        const options = ['Feed', 'Pet', 'Fight', 'Crafting', 'Status', 'Close'];
+        const options = ['Feed', 'Pet', 'Fight', 'Status', 'Close'];
         options.forEach((opt, index) => {
             const btn = this.add.text(0, -100 + (index * 60), opt, {
                 fontSize: '22px',
@@ -591,8 +602,6 @@ export default class UIScene extends Phaser.Scene {
                         this.toggleDragonMenu();
                     } else if (opt === 'Fight') {
                         this.toggleFighterSelection();
-                    } else if (opt === 'Crafting') {
-                        this.toggleBuildMenu();
                     } else if (opt === 'Status') {
                         this.toggleStatusPage();
                     }
@@ -940,17 +949,17 @@ export default class UIScene extends Phaser.Scene {
         }
     }
 
-    // --- BUILD MENU ---
+    // --- CRAFTING MENU (Old Build Menu) ---
 
-    createBuildMenu() {
-        this.buildMenuOpen = false;
-        this.buildMenuContainer = this.add.container(400, 300);
-        this.buildMenuContainer.setVisible(false);
+    createCraftingMenu() {
+        this.craftingMenuOpen = false;
+        this.craftingMenuContainer = this.add.container(400, 300);
+        this.craftingMenuContainer.setVisible(false);
 
         // Background
         const bg = this.add.rectangle(0, 0, 700, 450, 0x0a1a0a, 0.95);
         bg.setStrokeStyle(4, 0x00ff00);
-        this.buildMenuContainer.add(bg);
+        this.craftingMenuContainer.add(bg);
         // Title
         const title = this.add.text(0, -160, 'CRAFTING CENTER', {
             fontSize: '32px',
@@ -958,18 +967,18 @@ export default class UIScene extends Phaser.Scene {
             fill: '#00ffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
-        this.buildMenuContainer.add(title);
+        this.craftingMenuContainer.add(title);
 
         // Subtitle
         const subtitle = this.add.text(0, -120, 'Your Cards Inventory', {
             fontSize: '18px',
             fill: '#ffffff'
         }).setOrigin(0.5);
-        this.buildMenuContainer.add(subtitle);
+        this.craftingMenuContainer.add(subtitle);
 
         // Items Container
-        this.buildItemsContainer = this.add.container(0, 0);
-        this.buildMenuContainer.add(this.buildItemsContainer);
+        this.craftingItemsContainer = this.add.container(0, 0);
+        this.craftingMenuContainer.add(this.craftingItemsContainer);
 
         // Close Button
         const closeBtn = this.add.text(0, 180, 'Close', {
@@ -979,12 +988,12 @@ export default class UIScene extends Phaser.Scene {
             padding: { x: 30, y: 10 }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        closeBtn.on('pointerdown', () => this.toggleBuildMenu());
-        this.buildMenuContainer.add(closeBtn);
+        closeBtn.on('pointerdown', () => this.toggleCraftingMenu());
+        this.craftingMenuContainer.add(closeBtn);
     }
 
-    renderBuildItems() {
-        this.buildItemsContainer.removeAll(true);
+    renderCraftingItems() {
+        this.craftingItemsContainer.removeAll(true);
         const mainScene = this.scene.get('MainScene');
         const cards = mainScene.ownedCards || [];
 
@@ -995,7 +1004,7 @@ export default class UIScene extends Phaser.Scene {
                 fill: '#aaaaaa',
                 align: 'center'
             }).setOrigin(0.5);
-            this.buildItemsContainer.add(emptyText);
+            this.craftingItemsContainer.add(emptyText);
         } else {
             const cols = 4;
             const spacingX = 160;
@@ -1044,7 +1053,7 @@ export default class UIScene extends Phaser.Scene {
                 }).setOrigin(0, 0.5);
                 
                 cardGroup.add([nameText, typeText]);
-                this.buildItemsContainer.add(cardGroup);
+                this.craftingItemsContainer.add(cardGroup);
 
                 // Make card interactive
                 cardBg.setInteractive({ useHandCursor: true });
@@ -1055,10 +1064,10 @@ export default class UIScene extends Phaser.Scene {
                 cardBg.on('pointerdown', () => {
                     if (this.selectedCardIndex === null) {
                         this.selectedCardIndex = index;
-                        this.renderBuildItems();
+                        this.renderCraftingItems();
                     } else if (this.selectedCardIndex === index) {
                         this.selectedCardIndex = null;
-                        this.renderBuildItems();
+                        this.renderCraftingItems();
                     } else {
                         this.handleCardConnection(this.selectedCardIndex, index);
                     }
@@ -1084,7 +1093,7 @@ export default class UIScene extends Phaser.Scene {
             fill: '#00ffff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
-        this.buildItemsContainer.add(dragonTitle);
+        this.craftingItemsContainer.add(dragonTitle);
 
         const dragons = mainScene.ownedDragons || [];
         dragons.forEach((dragon, i) => {
@@ -1116,7 +1125,7 @@ export default class UIScene extends Phaser.Scene {
                         this.showGiveFeedback(card.name, dragon.name);
 
                         // 4. Refresh
-                        this.renderBuildItems();
+                        this.renderCraftingItems();
                     } else if (card.type === 'Fishing') {
                         // 1. Remove card
                         mainScene.ownedCards.splice(this.selectedCardIndex, 1);
@@ -1129,7 +1138,7 @@ export default class UIScene extends Phaser.Scene {
                         this.showGiveFeedback(card.name, dragon.name);
 
                         // 4. Refresh
-                        this.renderBuildItems();
+                        this.renderCraftingItems();
                     } else if (card.type === 'Farming' || card.type === 'Food') {
                         // 1. Remove card
                         mainScene.ownedCards.splice(this.selectedCardIndex, 1);
@@ -1142,12 +1151,12 @@ export default class UIScene extends Phaser.Scene {
                         this.showGiveFeedback(card.name, dragon.name);
 
                         // 4. Refresh
-                        this.renderBuildItems();
+                        this.renderCraftingItems();
                     }
                 }
             });
 
-            this.buildItemsContainer.add([dragonIcon, dragonName]);
+            this.craftingItemsContainer.add([dragonIcon, dragonName]);
         });
 
         // --- Crafting Check ---
@@ -1176,7 +1185,7 @@ export default class UIScene extends Phaser.Scene {
                 mainScene.ownedDragons.push(newDragon);
                 mainScene.events.emit('dragonAdded', newDragon);
 
-                this.toggleBuildMenu();
+                this.toggleCraftingMenu();
                 
                 const success = this.add.text(400, 100, `✨ CRAFTED: ${newDragon.name} ✨`, {
                     fontSize: '28px',
@@ -1196,7 +1205,141 @@ export default class UIScene extends Phaser.Scene {
                 });
             });
 
-            this.buildItemsContainer.add(craftBtn);
+            this.craftingItemsContainer.add(craftBtn);
+        }
+    }
+
+    // --- BUILD MENU (New System) ---
+
+    createBuildMenu() {
+        this.buildMenuOpen = false;
+        this.buildMenuContainer = this.add.container(400, 300);
+        this.buildMenuContainer.setVisible(false);
+
+        // Background
+        const bg = this.add.rectangle(0, 0, 700, 450, 0x1a1a2a, 0.95);
+        bg.setStrokeStyle(4, 0x4a90e2); // Blue for build
+        this.buildMenuContainer.add(bg);
+
+        // Title
+        const title = this.add.text(0, -160, 'CONSTRUCTION HUB', {
+            fontSize: '32px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#4a90e2',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.buildMenuContainer.add(title);
+
+        // Build Items Container
+        this.buildOptionsContainer = this.add.container(0, 0);
+        this.buildMenuContainer.add(this.buildOptionsContainer);
+
+        // Close Button
+        const closeBtn = this.add.text(0, 180, 'Close', {
+            fontSize: '22px',
+            fill: '#ffffff',
+            backgroundColor: '#ff0000',
+            padding: { x: 30, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        closeBtn.on('pointerdown', () => this.toggleBuildMenu());
+        this.buildMenuContainer.add(closeBtn);
+    }
+
+    toggleBuildMenu() {
+        const wasOpen = this.buildMenuOpen;
+        this.closeAllMenus();
+        this.buildMenuOpen = !wasOpen;
+        this.buildMenuContainer.setVisible(this.buildMenuOpen);
+        
+        if (this.buildMenuOpen) {
+            this.renderBuildOptions();
+        }
+    }
+
+    renderBuildOptions() {
+        this.buildOptionsContainer.removeAll(true);
+        const mainScene = this.scene.get('MainScene');
+
+        const builds = [
+            { 
+                name: 'Dragon House', 
+                key: 'house', 
+                cost: { wood: 20, fish: 1 },
+                description: 'A cozy home for your dragons.'
+            }
+        ];
+
+        builds.forEach((item, index) => {
+            const x = 0;
+            const y = -40;
+
+            const bg = this.add.rectangle(x, y, 600, 140, 0x2c3e50).setStrokeStyle(2, 0x4a90e2);
+            
+            const img = this.add.image(x - 220, y, item.key).setScale(0.12);
+            const nameText = this.add.text(x - 140, y - 40, item.name, { fontSize: '24px', fill: '#ffffff', fontStyle: 'bold' });
+            const costText = this.add.text(x - 140, y - 5, `Cost: ${item.cost.wood} Wood, ${item.cost.fish} Fish`, { 
+                fontSize: '18px', 
+                fill: (mainScene.wood >= item.cost.wood && mainScene.fish >= item.cost.fish) ? '#00ff00' : '#ff5555' 
+            });
+            const descText = this.add.text(x - 140, y + 25, item.description, { fontSize: '15px', fill: '#cccccc', wordWrap: { width: 320 } });
+
+            const canAfford = mainScene.wood >= item.cost.wood && mainScene.fish >= item.cost.fish;
+            const btnColor = canAfford ? '#27ae60' : '#7f8c8d';
+            
+            const buildBtn = this.add.text(x + 210, y + 35, 'BUILD', {
+                fontSize: '20px',
+                fill: '#ffffff',
+                backgroundColor: btnColor,
+                padding: { x: 20, y: 10 },
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+
+            if (canAfford) {
+                buildBtn.setInteractive({ useHandCursor: true });
+                buildBtn.on('pointerdown', () => {
+                    mainScene.wood -= item.cost.wood;
+                    mainScene.fish -= item.cost.fish;
+                    
+                    // Update HUD
+                    this.updateWoodCount(mainScene.wood);
+                    this.updateFishCount(mainScene.fish);
+                    
+                    // Emit event to MainScene to spawn house
+                    mainScene.events.emit('buildHouse');
+                    
+                    // Refresh menu
+                    this.renderBuildOptions();
+
+                    // Feedback
+                    const feedback = this.add.text(400, 100, `Building ${item.name}...`, {
+                        fontSize: '24px',
+                        fill: '#00ff00',
+                        backgroundColor: '#000000'
+                    }).setOrigin(0.5);
+
+                    this.tweens.add({
+                        targets: feedback,
+                        y: 50,
+                        alpha: 0,
+                        duration: 2000,
+                        onComplete: () => feedback.destroy()
+                    });
+                });
+            }
+
+            this.buildOptionsContainer.add([bg, img, nameText, costText, descText, buildBtn]);
+        });
+    }
+
+    toggleCraftingMenu() {
+        const wasOpen = this.craftingMenuOpen;
+        this.closeAllMenus();
+        this.craftingMenuOpen = !wasOpen;
+        this.craftingMenuContainer.setVisible(this.craftingMenuOpen);
+        
+        if (this.craftingMenuOpen) {
+            this.renderCraftingItems();
         }
     }
 
@@ -1229,7 +1372,7 @@ export default class UIScene extends Phaser.Scene {
         if (!isPartA || !isPartB) {
             // Can't connect non-parts
             this.selectedCardIndex = null;
-            this.renderBuildItems();
+            this.renderCraftingItems();
             return;
         }
 
@@ -1242,7 +1385,7 @@ export default class UIScene extends Phaser.Scene {
         if (hasDuplicate) {
             console.log('Cannot connect duplicate parts');
             this.selectedCardIndex = null;
-            this.renderBuildItems();
+            this.renderCraftingItems();
             return;
         }
 
@@ -1317,18 +1460,7 @@ export default class UIScene extends Phaser.Scene {
 
         // 8. Reset and Refresh
         this.selectedCardIndex = null;
-        this.renderBuildItems();
-    }
-
-    toggleBuildMenu() {
-        const wasOpen = this.buildMenuOpen;
-        this.closeAllMenus();
-        this.buildMenuOpen = !wasOpen;
-        this.buildMenuContainer.setVisible(this.buildMenuOpen);
-        
-        if (this.buildMenuOpen) {
-            this.renderBuildItems();
-        }
+        this.renderCraftingItems();
     }
 
     closeAllMenus() {
@@ -1339,6 +1471,7 @@ export default class UIScene extends Phaser.Scene {
             { flag: 'dragonMenuOpen', container: 'dragonMenuContainer' },
             { flag: 'statusOpen', container: 'statusContainer' },
             { flag: 'selectionOpen', container: 'selectionContainer' },
+            { flag: 'craftingMenuOpen', container: 'craftingMenuContainer' },
             { flag: 'buildMenuOpen', container: 'buildMenuContainer' }
         ];
 

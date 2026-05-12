@@ -111,6 +111,9 @@ export default class MainScene extends Phaser.Scene {
         }
         this.physics.add.overlap(this.dragonSprites, this.rocks, this.breakRock, null, this);
         
+        // 9. Houses
+        this.houses = this.physics.add.staticGroup();
+        
         // Listen for events
         this.events.on('dragonAdded', (newDragon) => {
             if (!newDragon.stats) {
@@ -137,6 +140,10 @@ export default class MainScene extends Phaser.Scene {
 
         this.events.on('giveAppleCard', (data) => {
             this.handleAppleGeneration(data.dragon, data.card);
+        });
+
+        this.events.on('buildHouse', () => {
+            this.spawnHouse();
         });
 
         // Global Stat Decay (Affects all owned dragons)
@@ -374,5 +381,31 @@ export default class MainScene extends Phaser.Scene {
 
         // Emit Event to UIScene
         this.events.emit('updateCoinCount', this.coins);
+    }
+
+    spawnHouse() {
+        // Spawn near player but not exactly on top
+        const x = this.player.x + Phaser.Math.Between(-100, 100);
+        const y = this.player.y + Phaser.Math.Between(-100, 100);
+        
+        const house = this.houses.create(x, y, 'house');
+        house.setScale(0.2); // Adjust scale as needed
+        house.refreshBody();
+
+        // Visual feedback
+        const text = this.add.text(x, y - 50, '🏠 House Built!', {
+            fontSize: '20px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: text,
+            y: '-=50',
+            alpha: 0,
+            duration: 3000,
+            onComplete: () => text.destroy()
+        });
     }
 }
