@@ -102,11 +102,21 @@ export default class UIScene extends Phaser.Scene {
         this.createCraftingMenu();
         this.createBuildMenu();
         this.createDragonMenu();
+        this.createHouseUpgradeMenu();
 
         mainScene.events.on('showDragonMenu', (dragon) => {
             console.log('Event received in UIScene for:', dragon.name);
             this.activeDragon = dragon;
             this.toggleDragonMenu();
+        });
+
+        mainScene.events.on('showHouseUpgradeMenu', (house) => {
+            this.activeHouse = house;
+            this.toggleHouseUpgradeMenu();
+        });
+
+        mainScene.events.on('gameOver', () => {
+            this.showGameOverScreen();
         });
 
         mainScene.events.on('refreshActiveStats', () => {
@@ -625,6 +635,7 @@ export default class UIScene extends Phaser.Scene {
             mainScene.apples--;
             
             this.activeDragon.stats.hunger = Math.min(100, this.activeDragon.stats.hunger + 15);
+            this.activeDragon.stats.hp = Math.min(100, (this.activeDragon.stats.hp !== undefined ? this.activeDragon.stats.hp : 100) + 15);
             mainScene.events.emit('updateApples', mainScene.apples);
             mainScene.events.emit('updateStats', this.activeDragon.stats);
             
@@ -689,25 +700,32 @@ export default class UIScene extends Phaser.Scene {
         // --- STAT BARS ---
         
         // 1. Love Bar (The Main Request)
-        this.statusContainer.add(this.add.text(-150, -80, 'Love', { fontSize: '20px', fill: '#ff69b4' }));
-        this.loveBarBg = this.add.rectangle(50, -70, 200, 25, 0x333333).setOrigin(0.5);
-        this.loveBar = this.add.rectangle(-50, -70, 0, 25, 0xff69b4).setOrigin(0, 0.5);
-        this.loveText = this.add.text(170, -70, `${stats.love}%`, { fontSize: '18px', fill: '#ff69b4' }).setOrigin(0.5);
+        this.statusContainer.add(this.add.text(-150, -100, 'Love', { fontSize: '18px', fill: '#ff69b4' }));
+        this.loveBarBg = this.add.rectangle(50, -90, 200, 22, 0x333333).setOrigin(0.5);
+        this.loveBar = this.add.rectangle(-50, -90, 0, 22, 0xff69b4).setOrigin(0, 0.5);
+        this.loveText = this.add.text(170, -90, `${stats.love}%`, { fontSize: '16px', fill: '#ff69b4' }).setOrigin(0.5);
         this.statusContainer.add([this.loveBarBg, this.loveBar, this.loveText]);
 
         // 2. Hunger Bar
-        this.statusContainer.add(this.add.text(-150, -20, 'Hunger', { fontSize: '20px', fill: '#ffa500' }));
-        this.hungerBarBg = this.add.rectangle(50, -10, 200, 25, 0x333333).setOrigin(0.5);
-        this.hungerBar = this.add.rectangle(-50, -10, 0, 25, 0xffa500).setOrigin(0, 0.5);
-        this.hungerText = this.add.text(170, -10, `${stats.hunger}%`, { fontSize: '18px', fill: '#ffa500' }).setOrigin(0.5);
+        this.statusContainer.add(this.add.text(-150, -45, 'Hunger', { fontSize: '18px', fill: '#ffa500' }));
+        this.hungerBarBg = this.add.rectangle(50, -35, 200, 22, 0x333333).setOrigin(0.5);
+        this.hungerBar = this.add.rectangle(-50, -35, 0, 22, 0xffa500).setOrigin(0, 0.5);
+        this.hungerText = this.add.text(170, -35, `${stats.hunger}%`, { fontSize: '16px', fill: '#ffa500' }).setOrigin(0.5);
         this.statusContainer.add([this.hungerBarBg, this.hungerBar, this.hungerText]);
 
         // 3. Energy Bar
-        this.statusContainer.add(this.add.text(-150, 40, 'Energy', { fontSize: '20px', fill: '#00ffff' }));
-        this.energyBarBg = this.add.rectangle(50, 50, 200, 25, 0x333333).setOrigin(0.5);
-        this.energyBar = this.add.rectangle(-50, 50, 0, 25, 0x00ffff).setOrigin(0, 0.5);
-        this.energyText = this.add.text(170, 50, `${stats.energy}%`, { fontSize: '18px', fill: '#00ffff' }).setOrigin(0.5);
+        this.statusContainer.add(this.add.text(-150, 10, 'Energy', { fontSize: '18px', fill: '#00ffff' }));
+        this.energyBarBg = this.add.rectangle(50, 20, 200, 22, 0x333333).setOrigin(0.5);
+        this.energyBar = this.add.rectangle(-50, 20, 0, 22, 0x00ffff).setOrigin(0, 0.5);
+        this.energyText = this.add.text(170, 20, `${stats.energy}%`, { fontSize: '16px', fill: '#00ffff' }).setOrigin(0.5);
         this.statusContainer.add([this.energyBarBg, this.energyBar, this.energyText]);
+
+        // 4. HP Bar
+        this.statusContainer.add(this.add.text(-150, 65, 'HP', { fontSize: '18px', fill: '#ff3333' }));
+        this.hpBarBg = this.add.rectangle(50, 75, 200, 22, 0x333333).setOrigin(0.5);
+        this.hpBar = this.add.rectangle(-50, 75, 0, 22, 0xff3333).setOrigin(0, 0.5);
+        this.hpText = this.add.text(170, 75, `${stats.hp || 100}/100`, { fontSize: '16px', fill: '#ff3333' }).setOrigin(0.5);
+        this.statusContainer.add([this.hpBarBg, this.hpBar, this.hpText]);
 
         // Close Button
         const closeBtn = this.add.text(0, 160, 'Close', {
@@ -742,11 +760,15 @@ export default class UIScene extends Phaser.Scene {
         this.loveBar.width = (stats.love / 100) * 200;
         this.hungerBar.width = (stats.hunger / 100) * 200;
         this.energyBar.width = (stats.energy / 100) * 200;
+        
+        const hpVal = stats.hp !== undefined ? stats.hp : 100;
+        this.hpBar.width = (hpVal / 100) * 200;
 
         // Update Texts
         this.loveText.setText(`${Math.round(stats.love)}%`);
         this.hungerText.setText(`${Math.round(stats.hunger)}%`);
         this.energyText.setText(`${Math.round(stats.energy)}%`);
+        this.hpText.setText(`${Math.round(hpVal)}/100`);
         this.levelText.setText(`Level ${stats.level} Dragon`);
     }
 
@@ -1265,7 +1287,7 @@ export default class UIScene extends Phaser.Scene {
             { 
                 name: 'Dragon House', 
                 key: 'house', 
-                cost: { wood: 20, fish: 1 },
+                cost: { wood: 3, fish: 1 },
                 description: 'A cozy home for your dragons.'
             }
         ];
@@ -1463,6 +1485,191 @@ export default class UIScene extends Phaser.Scene {
         this.renderCraftingItems();
     }
 
+    // --- HOUSE UPGRADE MENU ---
+
+    createHouseUpgradeMenu() {
+        this.houseUpgradeMenuOpen = false;
+        this.houseUpgradeMenuContainer = this.add.container(400, 300);
+        this.houseUpgradeMenuContainer.setVisible(false);
+
+        // Background - Dark theme matching the UI
+        const bg = this.add.rectangle(0, 0, 420, 380, 0x1e272c, 0.95);
+        bg.setStrokeStyle(4, 0x9b59b6); // Purple border
+        this.houseUpgradeMenuContainer.add(bg);
+
+        // Title
+        this.houseUpgradeTitle = this.add.text(0, -145, 'HOUSE UPGRADES', {
+            fontSize: '28px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#9b59b6',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.houseUpgradeMenuContainer.add(this.houseUpgradeTitle);
+
+        // Content description
+        this.houseUpgradeDesc = this.add.text(0, -105, 'Select an upgrade for this house.', {
+            fontSize: '15px',
+            fill: '#ffffff',
+            wordWrap: { width: 360 }
+        }).setOrigin(0.5);
+        this.houseUpgradeMenuContainer.add(this.houseUpgradeDesc);
+
+        // Buttons container for upgrades
+        this.upgradeButtonsContainer = this.add.container(0, 0);
+        this.houseUpgradeMenuContainer.add(this.upgradeButtonsContainer);
+
+        // Close Button
+        const closeBtn = this.add.text(0, 145, 'Close', {
+            fontSize: '20px',
+            fill: '#ffffff',
+            backgroundColor: '#ff0000',
+            padding: { x: 30, y: 10 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        closeBtn.on('pointerdown', () => this.toggleHouseUpgradeMenu());
+        this.houseUpgradeMenuContainer.add(closeBtn);
+    }
+
+    toggleHouseUpgradeMenu() {
+        const wasOpen = this.houseUpgradeMenuOpen;
+        this.closeAllMenus();
+        this.houseUpgradeMenuOpen = !wasOpen;
+        this.houseUpgradeMenuContainer.setVisible(this.houseUpgradeMenuOpen);
+
+        if (this.houseUpgradeMenuOpen) {
+            this.renderHouseUpgradeOptions();
+        }
+    }
+
+    renderHouseUpgradeOptions() {
+        this.upgradeButtonsContainer.removeAll(true);
+        const mainScene = this.scene.get('MainScene');
+        const house = this.activeHouse;
+
+        if (!house) return;
+
+        if (house.upgradeType) {
+            // House is already upgraded!
+            this.houseUpgradeTitle.setText(house.upgradeType.toUpperCase());
+            this.houseUpgradeDesc.setText(`This building is functioning as a ${house.upgradeType}.`);
+            
+            const activeText = house.upgradeType === 'tower' ? 'Defending island against black dragons...' : 'Generating passive resources...';
+            const statusText = this.add.text(0, 0, `Status: Active\n${activeText}`, {
+                fontSize: '18px',
+                fill: '#00ff00',
+                align: 'center'
+            }).setOrigin(0.5);
+            this.upgradeButtonsContainer.add(statusText);
+            return;
+        }
+
+        this.houseUpgradeTitle.setText('HOUSE UPGRADES');
+        this.houseUpgradeDesc.setText('Select an upgrade for this house.');
+
+        const options = [
+            {
+                name: 'Tower',
+                icon: '🏰',
+                cost: { wood: 10, coins: 5 },
+                desc: 'Shoots arrows at black dragons within range (20 dmg)',
+                color: '#3498db',
+                type: 'tower'
+            },
+            {
+                name: 'Mine',
+                icon: '⛏️',
+                cost: { wood: 15, coins: 5 },
+                desc: 'Generates passive coins (+1 every 5s)',
+                color: '#f1c40f',
+                type: 'mine'
+            },
+            {
+                name: 'Blacksmith',
+                icon: '🔨',
+                cost: { wood: 20, coins: 10 },
+                desc: 'Generates passive wood (+1 every 5s)',
+                color: '#e67e22',
+                type: 'blacksmith'
+            }
+        ];
+
+        options.forEach((opt, index) => {
+            const y = -45 + (index * 60);
+            
+            // Draw background for option
+            const btnBg = this.add.rectangle(0, y, 380, 52, 0x111625).setStrokeStyle(1, 0x555577);
+            
+            const titleText = this.add.text(-175, y - 20, `${opt.icon} Upgrade to ${opt.name}`, {
+                fontSize: '15px',
+                fill: opt.color,
+                fontStyle: 'bold'
+            });
+
+            const costText = this.add.text(-175, y + 2, `Cost: ${opt.cost.wood} Wood, ${opt.cost.coins} Coins`, {
+                fontSize: '11px',
+                fill: (mainScene.wood >= opt.cost.wood && mainScene.coins >= opt.cost.coins) ? '#2ecc71' : '#e74c3c'
+            });
+
+            const descText = this.add.text(-175, y + 14, opt.desc, {
+                fontSize: '10px',
+                fill: '#aaaaaa'
+            });
+
+            this.upgradeButtonsContainer.add([btnBg, titleText, costText, descText]);
+
+            const canAfford = mainScene.wood >= opt.cost.wood && mainScene.coins >= opt.cost.coins;
+
+            // Upgrade Button
+            const upBtn = this.add.text(130, y, 'UPGRADE', {
+                fontSize: '12px',
+                fill: '#ffffff',
+                backgroundColor: canAfford ? '#27ae60' : '#7f8c8d',
+                padding: { x: 8, y: 6 },
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+
+            if (canAfford) {
+                upBtn.setInteractive({ useHandCursor: true });
+                upBtn.on('pointerdown', () => {
+                    // Deduct resources
+                    mainScene.wood -= opt.cost.wood;
+                    mainScene.coins -= opt.cost.coins;
+
+                    // Update HUD
+                    this.updateWoodCount(mainScene.wood);
+                    this.updateCoinCount(mainScene.coins);
+
+                    // Perform upgrade
+                    mainScene.upgradeHouse(house, opt.type);
+
+                    // Close menu or refresh
+                    this.toggleHouseUpgradeMenu();
+
+                    // Show success feedback in UI
+                    const feedback = this.add.text(400, 100, `Upgraded House to ${opt.name}!`, {
+                        fontSize: '24px',
+                        fill: '#ffff00',
+                        backgroundColor: '#000000',
+                        padding: { x: 15, y: 10 }
+                    }).setOrigin(0.5);
+
+                    this.tweens.add({
+                        targets: feedback,
+                        y: 50,
+                        alpha: 0,
+                        duration: 3000,
+                        onComplete: () => feedback.destroy()
+                    });
+                });
+
+                upBtn.on('pointerover', () => upBtn.setScale(1.05));
+                upBtn.on('pointerout', () => upBtn.setScale(1.0));
+            }
+
+            this.upgradeButtonsContainer.add(upBtn);
+        });
+    }
+
     closeAllMenus() {
         const menus = [
             { flag: 'inventoryOpen', container: 'inventoryContainer' },
@@ -1472,7 +1679,8 @@ export default class UIScene extends Phaser.Scene {
             { flag: 'statusOpen', container: 'statusContainer' },
             { flag: 'selectionOpen', container: 'selectionContainer' },
             { flag: 'craftingMenuOpen', container: 'craftingMenuContainer' },
-            { flag: 'buildMenuOpen', container: 'buildMenuContainer' }
+            { flag: 'buildMenuOpen', container: 'buildMenuContainer' },
+            { flag: 'houseUpgradeMenuOpen', container: 'houseUpgradeMenuContainer' }
         ];
 
         menus.forEach(menu => {
@@ -1481,5 +1689,54 @@ export default class UIScene extends Phaser.Scene {
         });
 
         this.selectedCardIndex = null;
+    }
+
+    showGameOverScreen() {
+        this.closeAllMenus();
+        
+        const gameOverContainer = this.add.container(400, 300);
+        
+        // Dark screen fade overlay
+        const bg = this.add.rectangle(0, 0, 800, 600, 0x000000, 0.85).setInteractive();
+        gameOverContainer.add(bg);
+
+        // Title
+        const title = this.add.text(0, -80, 'GAME OVER', {
+            fontSize: '64px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#ff0000',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 8
+        }).setOrigin(0.5);
+        gameOverContainer.add(title);
+
+        // Subtitle
+        const sub = this.add.text(0, 0, 'Phillis has fainted!', {
+            fontSize: '24px',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        gameOverContainer.add(sub);
+
+        // Restart Button
+        const restartBtn = this.add.text(0, 100, 'TRY AGAIN', {
+            fontSize: '28px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#ffffff',
+            backgroundColor: '#27ae60',
+            padding: { x: 30, y: 15 }
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        restartBtn.on('pointerdown', () => {
+            // Restart both scenes
+            const mainScene = this.scene.get('MainScene');
+            mainScene.scene.restart();
+            this.scene.restart();
+        });
+
+        restartBtn.on('pointerover', () => restartBtn.setScale(1.05));
+        restartBtn.on('pointerout', () => restartBtn.setScale(1.0));
+
+        gameOverContainer.add(restartBtn);
     }
 }
