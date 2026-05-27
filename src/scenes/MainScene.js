@@ -78,6 +78,7 @@ export default class MainScene extends Phaser.Scene {
         this.coins = 0;
         this.wood = 0;
         this.fish = 0;
+        this.stone = 0;
         this.ownedCards = [];
         
         // Prevent instant collection on refresh
@@ -139,6 +140,10 @@ export default class MainScene extends Phaser.Scene {
             this.spawnHouse();
         });
 
+        this.events.on('buildCastle', () => {
+            this.spawnCastle();
+        });
+
         // Global Stat Decay (Affects all owned dragons)
         this.time.addEvent({
             delay: 15000,
@@ -161,9 +166,9 @@ export default class MainScene extends Phaser.Scene {
             callback: () => {
                 this.houses.getChildren().forEach(house => {
                     if (house.upgradeType === 'mine') {
-                        this.coins += 1;
-                        this.events.emit('updateCoinCount', this.coins);
-                        this.showFloatingText(house.x, house.y - 65, '+1 Coin 🪙', '#ffd700');
+                        this.stone += 1;
+                        this.events.emit('updateStoneCount', this.stone);
+                        this.showFloatingText(house.x, house.y - 65, '+1 Stone 🪨', '#aaaaaa');
                     } else if (house.upgradeType === 'blacksmith') {
                         this.wood += 1;
                         this.events.emit('updateWoodCount', this.wood);
@@ -605,6 +610,106 @@ export default class MainScene extends Phaser.Scene {
         const text = this.add.text(x, y - 70, '🏠 House Built!', {
             fontSize: '20px',
             fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: text,
+            y: '-=50',
+            alpha: 0,
+            duration: 3000,
+            onComplete: () => text.destroy()
+        });
+    }
+
+    spawnCastle() {
+        // Find a location near player that is not too close to the player or any dragon sprites
+        let x = this.player.x;
+        let y = this.player.y;
+        let isTooClose = true;
+        let attempts = 0;
+
+        while (isTooClose && attempts < 100) {
+            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            // Spawn in a ring further away for larger structure
+            const distance = Phaser.Math.Between(100, 200);
+            x = this.player.x + Math.cos(angle) * distance;
+            y = this.player.y + Math.sin(angle) * distance;
+
+            isTooClose = false;
+            this.dragonSprites.getChildren().forEach(dragon => {
+                const dist = Phaser.Math.Distance.Between(x, y, dragon.x, dragon.y);
+                if (dist < 100) { 
+                    isTooClose = true;
+                }
+            });
+            attempts++;
+        }
+
+        const castle = this.houses.create(x, y, 'castle');
+        castle.setScale(0.15); // Appropriate scale for the 1024x1024 generated image
+        castle.refreshBody();
+        
+        // Push any overlapping friendly dragons away with a slide animation
+        this.dragonSprites.getChildren().forEach(dragon => {
+            const dist = Phaser.Math.Distance.Between(castle.x, castle.y, dragon.x, dragon.y);
+            if (dist < 120) {
+                const angle = Phaser.Math.Angle.Between(castle.x, castle.y, dragon.x, dragon.y);
+                const pushDist = 120 - dist;
+                
+                dragon.x += Math.cos(angle) * pushDist;
+                dragon.y += Math.sin(angle) * pushDist;
+                
+                this.tweens.add({
+                    targets: dragon,
+                    x: dragon.x + Math.cos(angle) * 30,
+                    y: dragon.y + Math.sin(angle) * 30,
+                    duration: 250,
+                    ease: 'Cubic.easeOut',
+                    onUpdate: () => {
+                        if (dragon.label) {
+                            dragon.label.setPosition(dragon.x, dragon.y - 45);
+                        }
+                    }
+                });
+            }
+        });
+
+        // Push any overlapping black dragons away
+        this.blackDragons.getChildren().forEach(dragon => {
+            const dist = Phaser.Math.Distance.Between(castle.x, castle.y, dragon.x, dragon.y);
+            if (dist < 120) {
+                const angle = Phaser.Math.Angle.Between(castle.x, castle.y, dragon.x, dragon.y);
+                const pushDist = 120 - dist;
+                dragon.x += Math.cos(angle) * pushDist;
+                dragon.y += Math.sin(angle) * pushDist;
+                if (dragon.label) {
+                    dragon.label.setPosition(dragon.x, dragon.y - 45);
+                }
+            }
+        });
+        
+        // Add persistent label
+        const label = this.add.text(x, y - 75, '🏰 Castle', {
+            fontSize: '14px',
+            fill: '#ffffff',
+            backgroundColor: '#333333',
+            padding: { x: 4, y: 2 }
+        }).setOrigin(0.5);
+        castle.label = label;
+        castle.upgradeType = null;
+
+        // Interactive click handler
+        castle.setInteractive({ useHandCursor: true });
+        castle.on('pointerdown', () => {
+            this.events.emit('showHouseUpgradeMenu', castle);
+        });
+
+        // Visual feedback
+        const text = this.add.text(x, y - 100, '🏰 Castle Built!', {
+            fontSize: '24px',
+            fill: '#00ff00',
             backgroundColor: '#000000',
             padding: { x: 10, y: 5 }
         }).setOrigin(0.5);

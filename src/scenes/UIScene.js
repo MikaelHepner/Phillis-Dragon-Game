@@ -14,16 +14,6 @@ export default class UIScene extends Phaser.Scene {
         this.backpack.setScale(0.15);
         this.backpack.setInteractive({ useHandCursor: true });
 
-        // Apple Counter Text (HUD)
-        this.appleText = this.add.text(750, 60, '0', {
-            fontSize: '26px',
-            fontFamily: '"Courier New", Courier, monospace', // Retro font look
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 4,
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
         // --- Inventory Window (Hidden by default) ---
         this.inventoryOpen = false;
 
@@ -32,11 +22,11 @@ export default class UIScene extends Phaser.Scene {
         this.inventoryContainer.setVisible(false);
 
         // Background
-        const bg = this.add.rectangle(0, 0, 300, 200, 0x000000, 0.8);
+        const bg = this.add.rectangle(0, 0, 300, 350, 0x000000, 0.8);
         this.inventoryContainer.add(bg);
 
         // Title
-        const title = this.add.text(0, -80, 'Inventory', {
+        const title = this.add.text(0, -140, 'Inventory', {
             fontSize: '24px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#ffffff'
@@ -44,11 +34,11 @@ export default class UIScene extends Phaser.Scene {
         this.inventoryContainer.add(title);
 
         // Apple Icon in Window
-        const appleIcon = this.add.image(-50, 0, 'apple').setScale(0.2); // Bigger apple
+        const appleIcon = this.add.image(-70, -90, 'apple').setScale(0.06); // Scaled down
         this.inventoryContainer.add(appleIcon);
 
         // Apple Count in Window
-        this.windowAppleText = this.add.text(20, 0, 'Apples: 0', {
+        this.windowAppleText = this.add.text(20, -90, 'Apples: 0', {
             fontSize: '20px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#ffffff'
@@ -56,7 +46,7 @@ export default class UIScene extends Phaser.Scene {
         this.inventoryContainer.add(this.windowAppleText);
 
         // Close Hint
-        const closeHint = this.add.text(0, 80, '(Click Backpack to Close)', {
+        const closeHint = this.add.text(0, 150, '(Click Backpack to Close)', {
             fontSize: '12px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#aaaaaa'
@@ -95,9 +85,14 @@ export default class UIScene extends Phaser.Scene {
             this.updateFishCount(count);
         });
 
+        mainScene.events.on('updateStoneCount', (count) => {
+            this.updateStoneCount(count);
+        });
+
         this.createCoinHUD();
         this.createWoodHUD();
         this.createFishHUD();
+        this.createStoneHUD();
         this.createStore();
         this.createCraftingMenu();
         this.createBuildMenu();
@@ -146,7 +141,6 @@ export default class UIScene extends Phaser.Scene {
     }
 
     updateAppleCount(count) {
-        this.appleText.setText(count.toString());
         if (this.windowAppleText) {
             this.windowAppleText.setText(`Apples: ${count}`);
         }
@@ -167,19 +161,17 @@ export default class UIScene extends Phaser.Scene {
     // --- GAME STORE & COINS ---
 
     createCoinHUD() {
-        // Coin Icon (Below Backpack)
-        this.coinIcon = this.add.image(750, 140, 'coin'); // Under the backpack
-        this.coinIcon.setScale(0.15);
+        // Coin Icon in Window
+        const coinIcon = this.add.image(-70, -40, 'coin').setScale(0.06);
+        this.inventoryContainer.add(coinIcon);
 
-        // Coin Text
-        this.coinText = this.add.text(750, 140, '0', {
-            fontSize: '26px',
+        // Coin Text in Window
+        this.windowCoinText = this.add.text(20, -40, 'Coins: 0', {
+            fontSize: '20px',
             fontFamily: '"Courier New", Courier, monospace',
-            fill: '#FFD700', // Gold color
-            stroke: '#000000',
-            strokeThickness: 4,
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
+            fill: '#FFD700'
+        }).setOrigin(0, 0.5);
+        this.inventoryContainer.add(this.windowCoinText);
     }
 
     createStore() {
@@ -189,7 +181,7 @@ export default class UIScene extends Phaser.Scene {
         this.cart.setInteractive({ useHandCursor: true });
 
         // Crafting Button (Hammer icon)
-        this.craftBtn = this.add.container(750, 480);
+        this.craftBtn = this.add.container(750, 460);
         const craftBg = this.add.circle(0, 0, 35, 0x4a4a4a).setInteractive({ useHandCursor: true });
         const craftText = this.add.text(0, 0, '⚒️', { fontSize: '32px' }).setOrigin(0.5);
         this.craftBtn.add([craftBg, craftText]);
@@ -199,7 +191,7 @@ export default class UIScene extends Phaser.Scene {
         craftBg.on('pointerout', () => craftBg.setFillStyle(0x4a4a4a));
 
         // Build Button (House/Construction icon)
-        this.buildBtn = this.add.container(750, 570);
+        this.buildBtn = this.add.container(750, 530);
         const buildBg = this.add.circle(0, 0, 35, 0x1e3a5f).setInteractive({ useHandCursor: true });
         const buildText = this.add.text(0, 0, '🏗️', { fontSize: '32px' }).setOrigin(0.5);
         this.buildBtn.add([buildBg, buildText]);
@@ -347,47 +339,61 @@ export default class UIScene extends Phaser.Scene {
     }
 
     updateCoinCount(count) {
-        if (this.coinText) this.coinText.setText(count.toString());
+        if (this.windowCoinText) this.windowCoinText.setText(`Coins: ${count}`);
     }
 
     createWoodHUD() {
-        // Wood Icon (Below Coin HUD)
-        this.woodIcon = this.add.image(750, 220, 'tree'); 
-        this.woodIcon.setScale(0.08);
+        // Wood Icon in Window
+        const woodIcon = this.add.image(-70, 10, 'tree').setScale(0.03);
+        this.inventoryContainer.add(woodIcon);
 
-        // Wood Text
-        this.woodText = this.add.text(750, 220, '0', {
-            fontSize: '26px',
+        // Wood Text in Window
+        this.windowWoodText = this.add.text(20, 10, 'Wood: 0', {
+            fontSize: '20px',
             fontFamily: '"Courier New", Courier, monospace',
-            fill: '#8b4513', // Brown wood color
-            stroke: '#000000',
-            strokeThickness: 4,
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
+            fill: '#8b4513'
+        }).setOrigin(0, 0.5);
+        this.inventoryContainer.add(this.windowWoodText);
     }
 
     updateWoodCount(count) {
-        if (this.woodText) this.woodText.setText(count.toString());
+        if (this.windowWoodText) this.windowWoodText.setText(`Wood: ${count}`);
     }
 
     createFishHUD() {
-        // Fish Icon (Below Wood HUD)
-        this.fishIcon = this.add.image(750, 300, 'fishing_rod'); 
-        this.fishIcon.setScale(0.08);
+        // Fish Icon in Window
+        const fishIcon = this.add.image(-70, 110, 'fishing_rod').setScale(0.04);
+        this.inventoryContainer.add(fishIcon);
 
-        // Fish Text
-        this.fishText = this.add.text(750, 300, '0', {
-            fontSize: '26px',
+        // Fish Text in Window
+        this.windowFishText = this.add.text(20, 110, 'Fish: 0', {
+            fontSize: '20px',
             fontFamily: '"Courier New", Courier, monospace',
-            fill: '#00ffff', // Cyan fish color
-            stroke: '#000000',
-            strokeThickness: 4,
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
+            fill: '#00ffff'
+        }).setOrigin(0, 0.5);
+        this.inventoryContainer.add(this.windowFishText);
     }
 
     updateFishCount(count) {
-        if (this.fishText) this.fishText.setText(count.toString());
+        if (this.windowFishText) this.windowFishText.setText(`Fish: ${count}`);
+    }
+
+    createStoneHUD() {
+        // Stone Icon in Window
+        const stoneIcon = this.add.image(-70, 60, 'rock').setScale(0.04);
+        this.inventoryContainer.add(stoneIcon);
+
+        // Stone Text in Window
+        this.windowStoneText = this.add.text(20, 60, 'Stone: 0', {
+            fontSize: '20px',
+            fontFamily: '"Courier New", Courier, monospace',
+            fill: '#aaaaaa'
+        }).setOrigin(0, 0.5);
+        this.inventoryContainer.add(this.windowStoneText);
+    }
+
+    updateStoneCount(count) {
+        if (this.windowStoneText) this.windowStoneText.setText(`Stone: ${count}`);
     }
 
     createPackStore() {
@@ -1288,25 +1294,46 @@ export default class UIScene extends Phaser.Scene {
                 name: 'Dragon House', 
                 key: 'house', 
                 cost: { wood: 3, fish: 1 },
-                description: 'A cozy home for your dragons.'
+                description: 'A cozy home for your dragons.',
+                action: 'buildHouse'
+            },
+            { 
+                name: 'Castle', 
+                key: 'castle', 
+                cost: { stone: 10 },
+                description: 'A massive fortress. Extremely tough.',
+                action: 'buildCastle'
             }
         ];
 
         builds.forEach((item, index) => {
             const x = 0;
-            const y = -40;
+            const y = -60 + (index * 150); // Stack them vertically
 
             const bg = this.add.rectangle(x, y, 600, 140, 0x2c3e50).setStrokeStyle(2, 0x4a90e2);
             
             const img = this.add.image(x - 220, y, item.key).setScale(0.12);
+            
             const nameText = this.add.text(x - 140, y - 40, item.name, { fontSize: '24px', fill: '#ffffff', fontStyle: 'bold' });
-            const costText = this.add.text(x - 140, y - 5, `Cost: ${item.cost.wood} Wood, ${item.cost.fish} Fish`, { 
+            
+            let costStr = 'Cost: ';
+            let costArr = [];
+            if (item.cost.wood) costArr.push(`${item.cost.wood} Wood`);
+            if (item.cost.fish) costArr.push(`${item.cost.fish} Fish`);
+            if (item.cost.stone) costArr.push(`${item.cost.stone} Stone`);
+            costStr += costArr.join(', ');
+
+            const canAffordWood = item.cost.wood ? mainScene.wood >= item.cost.wood : true;
+            const canAffordFish = item.cost.fish ? mainScene.fish >= item.cost.fish : true;
+            const canAffordStone = item.cost.stone ? mainScene.stone >= item.cost.stone : true;
+            const canAfford = canAffordWood && canAffordFish && canAffordStone;
+
+            const costText = this.add.text(x - 140, y - 5, costStr, { 
                 fontSize: '18px', 
-                fill: (mainScene.wood >= item.cost.wood && mainScene.fish >= item.cost.fish) ? '#00ff00' : '#ff5555' 
+                fill: canAfford ? '#00ff00' : '#ff5555' 
             });
             const descText = this.add.text(x - 140, y + 25, item.description, { fontSize: '15px', fill: '#cccccc', wordWrap: { width: 320 } });
 
-            const canAfford = mainScene.wood >= item.cost.wood && mainScene.fish >= item.cost.fish;
             const btnColor = canAfford ? '#27ae60' : '#7f8c8d';
             
             const buildBtn = this.add.text(x + 210, y + 35, 'BUILD', {
@@ -1320,15 +1347,17 @@ export default class UIScene extends Phaser.Scene {
             if (canAfford) {
                 buildBtn.setInteractive({ useHandCursor: true });
                 buildBtn.on('pointerdown', () => {
-                    mainScene.wood -= item.cost.wood;
-                    mainScene.fish -= item.cost.fish;
+                    if (item.cost.wood) mainScene.wood -= item.cost.wood;
+                    if (item.cost.fish) mainScene.fish -= item.cost.fish;
+                    if (item.cost.stone) mainScene.stone -= item.cost.stone;
                     
                     // Update HUD
                     this.updateWoodCount(mainScene.wood);
                     this.updateFishCount(mainScene.fish);
+                    this.updateStoneCount(mainScene.stone);
                     
-                    // Emit event to MainScene to spawn house
-                    mainScene.events.emit('buildHouse');
+                    // Emit event to MainScene to spawn structure
+                    mainScene.events.emit(item.action);
                     
                     // Refresh menu
                     this.renderBuildOptions();
