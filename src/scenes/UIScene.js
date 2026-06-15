@@ -262,13 +262,14 @@ export default class UIScene extends Phaser.Scene {
             { name: 'Fire Dragon', key: 'dragon_fire', cost: 20 },
             { name: 'Ice Dragon', key: 'dragon_ice', cost: 30 },
             { name: 'Thunder Dragon', key: 'dragon_storm', cost: 40 },
-            { name: 'Water Dragon', key: 'dragon_water', cost: 50 }
+            { name: 'Water Dragon', key: 'dragon_water', cost: 50 },
+            { name: 'Stone Dragon', key: 'dragon_stone', cost: 60 }
         ];
 
         const mainScene = this.scene.get('MainScene');
 
         items.forEach((item, index) => {
-            const x = -255 + (index * 170); // Adjusted for 4 items
+            const x = -280 + (index * 140); // Adjusted for 5 items
             const y = -30;
 
             const itemBg = this.add.rectangle(x, y, 120, 180, 0x3d2b1f).setStrokeStyle(2, 0xd4af37);
@@ -823,9 +824,10 @@ export default class UIScene extends Phaser.Scene {
         this.selectionTitle.setStyle({ fill: '#ff0000' });
 
         const fighters = [
-            { name: 'Fire Dragon', key: 'dragon_fire', x: -180 },
-            { name: 'Ice Dragon', key: 'dragon_ice', x: 0 },
-            { name: 'Storm Dragon', key: 'dragon_storm', x: 180 }
+            { name: 'Fire Dragon', key: 'dragon_fire', x: -225 },
+            { name: 'Ice Dragon', key: 'dragon_ice', x: -75 },
+            { name: 'Storm Dragon', key: 'dragon_storm', x: 75 },
+            { name: 'Stone Dragon', key: 'dragon_stone', x: 225 }
         ];
 
         fighters.forEach(f => {

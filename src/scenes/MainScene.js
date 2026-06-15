@@ -103,6 +103,10 @@ export default class MainScene extends Phaser.Scene {
         // 9. Houses
         this.houses = this.physics.add.staticGroup();
         this.physics.add.collider(this.dragonSprites, this.houses);
+
+        // Walls
+        this.walls = this.physics.add.staticGroup();
+        this.physics.add.collider(this.dragonSprites, this.walls);
         
         // Listen for events
         this.events.on('dragonAdded', (newDragon) => {
@@ -182,6 +186,7 @@ export default class MainScene extends Phaser.Scene {
         // 10. Black Dragons (Enemies)
         this.blackDragons = this.physics.add.group();
         this.physics.add.collider(this.blackDragons, this.houses);
+        this.physics.add.collider(this.blackDragons, this.walls);
 
         // Tower attack loop
         this.time.addEvent({
@@ -721,6 +726,110 @@ export default class MainScene extends Phaser.Scene {
             duration: 3000,
             onComplete: () => text.destroy()
         });
+
+        // Build walls around buildings
+        this.buildWallAroundBuildings();
+    }
+
+    spawnWallTile(x, y, delay) {
+        // Destroy overlapping trees/rocks
+        const toDestroy = [];
+        this.trees.getChildren().forEach(tree => {
+            if (Phaser.Math.Distance.Between(x, y, tree.x, tree.y) < 30) {
+                toDestroy.push(tree);
+            }
+        });
+        this.rocks.getChildren().forEach(rock => {
+            if (Phaser.Math.Distance.Between(x, y, rock.x, rock.y) < 30) {
+                toDestroy.push(rock);
+            }
+        });
+        toDestroy.forEach(item => item.destroy());
+
+        // Create wall
+        const wall = this.walls.create(x, y, 'wall');
+        
+        // Compute target scale based on 40x40 display size
+        const targetScaleX = 40 / wall.width;
+        const targetScaleY = 40 / wall.height;
+        
+        wall.setScale(0);
+        wall.refreshBody();
+        
+        this.time.delayedCall(delay, () => {
+            if (!wall.active) return;
+            this.tweens.add({
+                targets: wall,
+                scaleX: targetScaleX,
+                scaleY: targetScaleY,
+                duration: 400,
+                ease: 'Back.easeOut',
+                onComplete: () => {
+                    if (wall.active) wall.refreshBody();
+                }
+            });
+        });
+    }
+
+    buildWallAroundBuildings() {
+        if (!this.houses || this.houses.getLength() === 0) return;
+
+        // Clear existing walls first to handle expansion/rebuilding
+        this.walls.clear(true, true);
+
+        // Calculate bounding box of all houses/castles
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        this.houses.getChildren().forEach(house => {
+            minX = Math.min(minX, house.x);
+            maxX = Math.max(maxX, house.x);
+            minY = Math.min(minY, house.y);
+            maxY = Math.max(maxY, house.y);
+        });
+
+        // Add padding around buildings
+        const padding = 120;
+        const left = minX - padding;
+        const right = maxX + padding;
+        const top = minY - padding;
+        const bottom = maxY + padding;
+
+        const wallSpacing = 40;
+        const wallPositions = [];
+
+        // Top edge: left to right
+        for (let x = left; x <= right; x += wallSpacing) {
+            wallPositions.push({ x, y: top });
+        }
+        // Right edge: top + spacing to bottom
+        for (let y = top + wallSpacing; y <= bottom; y += wallSpacing) {
+            wallPositions.push({ x: right, y });
+        }
+        // Bottom edge: right - spacing to left (going backwards)
+        for (let x = right - wallSpacing; x >= left; x -= wallSpacing) {
+            // Leave a gate/gap in the middle of the bottom wall
+            const midX = (left + right) / 2;
+            if (Math.abs(x - midX) >= wallSpacing * 1.5) {
+                wallPositions.push({ x, y: bottom });
+            }
+        }
+        // Left edge: bottom - spacing to top + spacing (going upwards)
+        for (let y = bottom - wallSpacing; y >= top + wallSpacing; y -= wallSpacing) {
+            wallPositions.push({ x: left, y });
+        }
+
+        // Spawn walls sequentially with a stagger effect
+        wallPositions.forEach((pos, index) => {
+            const delay = index * 40; // 40ms stagger between wall segments
+            this.spawnWallTile(pos.x, pos.y, delay);
+        });
+        
+        // Visual text message
+        const midX = (left + right) / 2;
+        this.showFloatingText(midX, top - 30, '🛡️ Defensive Walls Erected!', '#ffd700');
     }
 
     upgradeHouse(house, type) {
