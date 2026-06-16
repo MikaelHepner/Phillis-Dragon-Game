@@ -263,30 +263,33 @@ export default class UIScene extends Phaser.Scene {
             { name: 'Ice Dragon', key: 'dragon_ice', cost: 30 },
             { name: 'Thunder Dragon', key: 'dragon_storm', cost: 40 },
             { name: 'Water Dragon', key: 'dragon_water', cost: 50 },
-            { name: 'Stone Dragon', key: 'dragon_stone', cost: 60 }
+            { name: 'Stone Dragon', key: 'dragon_stone', cost: 60 },
+            { name: 'Poison Dragon', key: 'dragon_poison', cost: 70 },
+            { name: 'Plant Dragon', key: 'dragon_plant', cost: 80 },
+            { name: 'Soda Dragon', key: 'dragon_soda', cost: 90 }
         ];
 
         const mainScene = this.scene.get('MainScene');
 
         items.forEach((item, index) => {
-            const x = -280 + (index * 140); // Adjusted for 5 items
+            const x = -294 + (index * 84); // Adjusted for 8 items
             const y = -30;
 
-            const itemBg = this.add.rectangle(x, y, 120, 180, 0x3d2b1f).setStrokeStyle(2, 0xd4af37);
+            const itemBg = this.add.rectangle(x, y, 80, 180, 0x3d2b1f).setStrokeStyle(2, 0xd4af37);
             
-            const dragonImg = this.add.image(x, y - 30, item.key).setScale(0.1);
-            const nameText = this.add.text(x, y + 25, item.name, { fontSize: '16px', fill: '#ffffff' }).setOrigin(0.5);
-            const costText = this.add.text(x, y + 45, `${item.cost} Coins`, { fontSize: '14px', fill: '#FFD700' }).setOrigin(0.5);
+            const dragonImg = this.add.image(x, y - 30, item.key).setScale(0.065);
+            const nameText = this.add.text(x, y + 25, item.name, { fontSize: '11px', fill: '#ffffff' }).setOrigin(0.5);
+            const costText = this.add.text(x, y + 45, `${item.cost} Coins`, { fontSize: '11px', fill: '#FFD700' }).setOrigin(0.5);
 
             const alreadyOwned = mainScene.ownedDragons.some(d => d.key === item.key);
             const btnText = alreadyOwned ? 'OWNED' : 'BUY';
             const btnColor = alreadyOwned ? '#555555' : (mainScene.coins >= item.cost ? '#00aa00' : '#aa0000');
 
             const buyBtn = this.add.text(x, y + 75, btnText, {
-                fontSize: '18px',
+                fontSize: '13px',
                 fill: '#ffffff',
                 backgroundColor: btnColor,
-                padding: { x: 10, y: 5 }
+                padding: { x: 6, y: 3 }
             }).setOrigin(0.5);
 
             if (!alreadyOwned && mainScene.coins >= item.cost) {
@@ -824,24 +827,27 @@ export default class UIScene extends Phaser.Scene {
         this.selectionTitle.setStyle({ fill: '#ff0000' });
 
         const fighters = [
-            { name: 'Fire Dragon', key: 'dragon_fire', x: -225 },
-            { name: 'Ice Dragon', key: 'dragon_ice', x: -75 },
-            { name: 'Storm Dragon', key: 'dragon_storm', x: 75 },
-            { name: 'Stone Dragon', key: 'dragon_stone', x: 225 }
+            { name: 'Fire Dragon', key: 'dragon_fire', x: -300 },
+            { name: 'Ice Dragon', key: 'dragon_ice', x: -200 },
+            { name: 'Storm Dragon', key: 'dragon_storm', x: -100 },
+            { name: 'Stone Dragon', key: 'dragon_stone', x: 0 },
+            { name: 'Poison Dragon', key: 'dragon_poison', x: 100 },
+            { name: 'Plant Dragon', key: 'dragon_plant', x: 200 },
+            { name: 'Soda Dragon', key: 'dragon_soda', x: 300 }
         ];
 
         fighters.forEach(f => {
             const group = this.add.container(f.x, 0);
             
-            const dragonImg = this.add.image(0, -20, f.key).setScale(0.12);
+            const dragonImg = this.add.image(0, -20, f.key).setScale(0.1);
             dragonImg.setInteractive({ useHandCursor: true });
             
-            const nameText = this.add.text(0, 80, f.name, { fontSize: '18px', fill: '#ffffff' }).setOrigin(0.5);
+            const nameText = this.add.text(0, 80, f.name, { fontSize: '14px', fill: '#ffffff' }).setOrigin(0.5);
             const selectBtn = this.add.text(0, 130, 'SELECT', {
-                fontSize: '20px',
+                fontSize: '16px',
                 fill: '#ffffff',
                 backgroundColor: '#333333',
-                padding: { x: 15, y: 5 }
+                padding: { x: 12, y: 4 }
             }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
             const handleSelect = () => {
@@ -1209,7 +1215,7 @@ export default class UIScene extends Phaser.Scene {
                     if (idx !== -1) mainScene.ownedCards.splice(idx, 1);
                 });
 
-                const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water'];
+                const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda'];
                 const type = dragonTypes[Math.floor(Math.random() * dragonTypes.length)];
                 const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
                 mainScene.ownedDragons.push(newDragon);
@@ -1483,7 +1489,7 @@ export default class UIScene extends Phaser.Scene {
         // 7. Check if Full Dragon
         if (mergedParts.length === 4) {
             // Automatically craft!
-            const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water'];
+            const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda'];
             const type = dragonTypes[Math.floor(Phaser.Math.RND.realInRange(0, dragonTypes.length)) % dragonTypes.length];
             const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
             
