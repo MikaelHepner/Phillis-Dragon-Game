@@ -211,7 +211,7 @@ export default class UIScene extends Phaser.Scene {
         this.storeContainer.add(bg);
 
         // Title
-        const title = this.add.text(0, -160, 'Dragon Store', {
+        const title = this.add.text(0, -175, 'Dragon Store', {
             fontSize: '32px',
             fontFamily: '"Courier New", Courier, monospace',
             fill: '#EFD469',
@@ -220,8 +220,9 @@ export default class UIScene extends Phaser.Scene {
         this.storeContainer.add(title);
 
         // Close Hint
-        const closeHint = this.add.text(0, 180, '(Click Cart to Close)', {
+        const closeHint = this.add.text(0, 195, '(Click Cart to Close)', {
             fontSize: '14px',
+            fontFamily: '"Courier New", Courier, monospace',
             fill: '#aaaaaa'
         }).setOrigin(0.5);
         this.storeContainer.add(closeHint);
@@ -266,30 +267,51 @@ export default class UIScene extends Phaser.Scene {
             { name: 'Stone Dragon', key: 'dragon_stone', cost: 60 },
             { name: 'Poison Dragon', key: 'dragon_poison', cost: 70 },
             { name: 'Plant Dragon', key: 'dragon_plant', cost: 80 },
-            { name: 'Soda Dragon', key: 'dragon_soda', cost: 90 }
+            { name: 'Soda Dragon', key: 'dragon_soda', cost: 90 },
+            { name: 'Sand Dragon', key: 'dragon_sand', cost: 100 },
+            { name: 'Metal Dragon', key: 'dragon_metal', cost: 110 },
+            { name: 'Paper Dragon', key: 'dragon_paper', cost: 120 },
+            { name: 'Diamond Dragon', key: 'dragon_diamond', cost: 150 },
+            { name: 'Glass Dragon', key: 'dragon_glass', cost: 130 },
+            { name: 'Jacket Dragon', key: 'dragon_jacket', cost: 140 },
+            { name: 'Light Dragon', key: 'dragon_light', cost: 160 },
+            { name: 'Coffee Dragon', key: 'dragon_coffee', cost: 170 }
         ];
 
         const mainScene = this.scene.get('MainScene');
 
         items.forEach((item, index) => {
-            const x = -294 + (index * 84); // Adjusted for 8 items
-            const y = -30;
+            const col = index % 8;
+            const row = Math.floor(index / 8);
+            const x = -297.5 + (col * 85);
+            const y = -80 + (row * 160);
 
-            const itemBg = this.add.rectangle(x, y, 80, 180, 0x3d2b1f).setStrokeStyle(2, 0xd4af37);
+            const itemBg = this.add.rectangle(x, y, 80, 145, 0x3d2b1f).setStrokeStyle(2, 0xd4af37);
             
-            const dragonImg = this.add.image(x, y - 30, item.key).setScale(0.065);
-            const nameText = this.add.text(x, y + 25, item.name, { fontSize: '11px', fill: '#ffffff' }).setOrigin(0.5);
-            const costText = this.add.text(x, y + 45, `${item.cost} Coins`, { fontSize: '11px', fill: '#FFD700' }).setOrigin(0.5);
+            const dragonImg = this.add.image(x, y - 26, item.key).setScale(0.04);
+            const nameText = this.add.text(x, y + 16, item.name, {
+                fontSize: '7px',
+                fill: '#ffffff',
+                fontFamily: '"Courier New", Courier, monospace',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+            const costText = this.add.text(x, y + 34, `${item.cost} Coins`, {
+                fontSize: '8px',
+                fill: '#FFD700',
+                fontFamily: '"Courier New", Courier, monospace'
+            }).setOrigin(0.5);
 
             const alreadyOwned = mainScene.ownedDragons.some(d => d.key === item.key);
             const btnText = alreadyOwned ? 'OWNED' : 'BUY';
             const btnColor = alreadyOwned ? '#555555' : (mainScene.coins >= item.cost ? '#00aa00' : '#aa0000');
 
-            const buyBtn = this.add.text(x, y + 75, btnText, {
-                fontSize: '13px',
+            const buyBtn = this.add.text(x, y + 53, btnText, {
+                fontSize: '9px',
                 fill: '#ffffff',
+                fontFamily: '"Courier New", Courier, monospace',
+                fontStyle: 'bold',
                 backgroundColor: btnColor,
-                padding: { x: 6, y: 3 }
+                padding: { x: 5, y: 2 }
             }).setOrigin(0.5);
 
             if (!alreadyOwned && mainScene.coins >= item.cost) {
@@ -794,7 +816,7 @@ export default class UIScene extends Phaser.Scene {
         this.selectionContainer.setVisible(false);
 
         // Background
-        const bg = this.add.rectangle(0, 0, 600, 450, 0x000000, 0.9);
+        const bg = this.add.rectangle(0, 0, 700, 450, 0x000000, 0.9);
         bg.setStrokeStyle(3, 0xff0000); 
         this.selectionContainer.add(bg);
 
@@ -827,27 +849,40 @@ export default class UIScene extends Phaser.Scene {
         this.selectionTitle.setStyle({ fill: '#ff0000' });
 
         const fighters = [
-            { name: 'Fire Dragon', key: 'dragon_fire', x: -300 },
-            { name: 'Ice Dragon', key: 'dragon_ice', x: -200 },
-            { name: 'Storm Dragon', key: 'dragon_storm', x: -100 },
-            { name: 'Stone Dragon', key: 'dragon_stone', x: 0 },
-            { name: 'Poison Dragon', key: 'dragon_poison', x: 100 },
-            { name: 'Plant Dragon', key: 'dragon_plant', x: 200 },
-            { name: 'Soda Dragon', key: 'dragon_soda', x: 300 }
+            { name: 'Fire Dragon', key: 'dragon_fire' },
+            { name: 'Ice Dragon', key: 'dragon_ice' },
+            { name: 'Storm Dragon', key: 'dragon_storm' },
+            { name: 'Stone Dragon', key: 'dragon_stone' },
+            { name: 'Poison Dragon', key: 'dragon_poison' },
+            { name: 'Plant Dragon', key: 'dragon_plant' },
+            { name: 'Soda Dragon', key: 'dragon_soda' },
+            { name: 'Sand Dragon', key: 'dragon_sand' },
+            { name: 'Metal Dragon', key: 'dragon_metal' },
+            { name: 'Paper Dragon', key: 'dragon_paper' },
+            { name: 'Diamond Dragon', key: 'dragon_diamond' },
+            { name: 'Glass Dragon', key: 'dragon_glass' },
+            { name: 'Jacket Dragon', key: 'dragon_jacket' },
+            { name: 'Light Dragon', key: 'dragon_light' },
+            { name: 'Coffee Dragon', key: 'dragon_coffee' }
         ];
 
-        fighters.forEach(f => {
-            const group = this.add.container(f.x, 0);
+        fighters.forEach((f, index) => {
+            const col = index % 8;
+            const row = Math.floor(index / 8);
+            const x = -297.5 + (col * 85);
+            const y = -70 + (row * 140);
+
+            const group = this.add.container(x, y);
             
-            const dragonImg = this.add.image(0, -20, f.key).setScale(0.1);
+            const dragonImg = this.add.image(0, -20, f.key).setScale(0.06);
             dragonImg.setInteractive({ useHandCursor: true });
             
-            const nameText = this.add.text(0, 80, f.name, { fontSize: '14px', fill: '#ffffff' }).setOrigin(0.5);
-            const selectBtn = this.add.text(0, 130, 'SELECT', {
-                fontSize: '16px',
+            const nameText = this.add.text(0, 45, f.name, { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+            const selectBtn = this.add.text(0, 75, 'SELECT', {
+                fontSize: '12px',
                 fill: '#ffffff',
                 backgroundColor: '#333333',
-                padding: { x: 12, y: 4 }
+                padding: { x: 6, y: 2 }
             }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
             const handleSelect = () => {
@@ -1215,7 +1250,7 @@ export default class UIScene extends Phaser.Scene {
                     if (idx !== -1) mainScene.ownedCards.splice(idx, 1);
                 });
 
-                const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda'];
+                const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda', 'Sand', 'Metal', 'Paper', 'Diamond', 'Glass', 'Jacket', 'Light', 'Coffee'];
                 const type = dragonTypes[Math.floor(Math.random() * dragonTypes.length)];
                 const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
                 mainScene.ownedDragons.push(newDragon);
@@ -1489,7 +1524,7 @@ export default class UIScene extends Phaser.Scene {
         // 7. Check if Full Dragon
         if (mergedParts.length === 4) {
             // Automatically craft!
-            const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda'];
+            const dragonTypes = ['Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda', 'Sand', 'Metal', 'Paper', 'Diamond', 'Glass', 'Jacket', 'Light', 'Coffee'];
             const type = dragonTypes[Math.floor(Phaser.Math.RND.realInRange(0, dragonTypes.length)) % dragonTypes.length];
             const newDragon = { name: `Crafted ${type} Dragon`, key: `dragon_${type.toLowerCase()}` };
             
