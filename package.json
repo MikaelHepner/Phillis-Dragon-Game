@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "jimp": "^1.6.0",
-    "phaser": "^3.80.0"
+    "phaser": "^3.80.0",
+    "three": "^0.185.1"
   }
 }

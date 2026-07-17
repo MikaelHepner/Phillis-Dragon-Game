@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dragon Island 3D</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        background: #7ec8e3;
+        font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe UI', sans-serif;
+      }
+      #game-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #hud {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        pointer-events: none;
+        user-select: none;
+      }
+      .hud-chip {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.85);
+        border: 3px solid #5a3e2b;
+        border-radius: 14px;
+        padding: 6px 14px;
+        margin-right: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        color: #5a3e2b;
+        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2);
+      }
+      #fps {
+        font-size: 14px;
+        padding: 4px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+    <div id="hud">
+      <span class="hud-chip">🐉 Dragon Island 3D</span>
+      <span class="hud-chip" id="fps">-- fps</span>
+    </div>
+    <script type="module" src="/src3d/main.js"></script>
+  </body>
+</html>

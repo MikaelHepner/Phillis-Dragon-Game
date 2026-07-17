@@ -98,6 +98,7 @@ export default class UIScene extends Phaser.Scene {
         this.createBuildMenu();
         this.createDragonMenu();
         this.createHouseUpgradeMenu();
+        this.createSmileButton();
 
         mainScene.events.on('showDragonMenu', (dragon) => {
             console.log('Event received in UIScene for:', dragon.name);
@@ -1739,6 +1740,66 @@ export default class UIScene extends Phaser.Scene {
             }
 
             this.upgradeButtonsContainer.add(upBtn);
+        });
+    }
+
+    createSmileButton() {
+        // Smile Button - Top Left
+        this.smileBtn = this.add.container(50, 50);
+
+        // Circle background
+        const smileBg = this.add.circle(0, 0, 28, 0x3a3a5c);
+        smileBg.setStrokeStyle(2, 0xffcc00);
+        smileBg.setInteractive({ useHandCursor: true });
+
+        // Smiley emoji
+        const smileEmoji = this.add.text(0, 0, '😊', {
+            fontSize: '28px'
+        }).setOrigin(0.5);
+
+        this.smileBtn.add([smileBg, smileEmoji]);
+
+        // Hover glow effect
+        smileBg.on('pointerover', () => {
+            smileBg.setFillStyle(0x5a5a8c);
+            smileBg.setStrokeStyle(3, 0xffee55);
+            this.tweens.add({
+                targets: this.smileBtn,
+                scale: 1.1,
+                duration: 120,
+                ease: 'Sine.easeOut'
+            });
+        });
+
+        smileBg.on('pointerout', () => {
+            smileBg.setFillStyle(0x3a3a5c);
+            smileBg.setStrokeStyle(2, 0xffcc00);
+            this.tweens.add({
+                targets: this.smileBtn,
+                scale: 1.0,
+                duration: 120,
+                ease: 'Sine.easeOut'
+            });
+        });
+
+        // Click handler
+        smileBg.on('pointerdown', () => {
+            // Pulse feedback
+            this.tweens.add({
+                targets: this.smileBtn,
+                scale: 0.85,
+                duration: 80,
+                yoyo: true,
+                ease: 'Sine.easeInOut'
+            });
+
+            // Transition to the Black Room
+            this.scene.get('MainScene').cameras.main.fadeOut(400, 0, 0, 0);
+            this.time.delayedCall(400, () => {
+                this.scene.sleep('MainScene');
+                this.scene.sleep('UIScene');
+                this.scene.launch('BlackRoomScene');
+            });
         });
     }
 

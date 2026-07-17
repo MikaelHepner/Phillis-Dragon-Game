@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dragon Island 3D — Dragon Gallery</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        background: #34495e;
+        font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe UI', sans-serif;
+      }
+      #game-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #toolbar {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        user-select: none;
+      }
+      .anim-btn {
+        background: rgba(255, 255, 255, 0.9);
+        border: 3px solid #5a3e2b;
+        border-radius: 14px;
+        padding: 8px 16px;
+        font-size: 16px;
+        font-weight: bold;
+        font-family: inherit;
+        color: #5a3e2b;
+        cursor: pointer;
+        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+      }
+      .anim-btn.active {
+        background: #ffd54f;
+      }
+      .anim-btn:active {
+        transform: translateY(2px);
+        box-shadow: none;
+      }
+      #hint {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 14px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+    <div id="toolbar">
+      <button class="anim-btn active" data-anim="idle">🧘 Idle</button>
+      <button class="anim-btn" data-anim="walk">🚶 Walk</button>
+      <button class="anim-btn" data-anim="fly">🕊️ Fly</button>
+      <button class="anim-btn" data-anim="attack">⚔️ Attack</button>
+      <button class="anim-btn" data-anim="hurt">💥 Hurt</button>
+    </div>
+    <div id="hint">Drag to orbit · Scroll to zoom · Click a dragon to make it attack</div>
+    <script type="module" src="/src3d/gallery.js"></script>
+  </body>
+</html>
