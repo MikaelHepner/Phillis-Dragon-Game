@@ -209,7 +209,7 @@ verify the "Done when" checklist in the browser, then move to the next batch.
 - [x] Batch 2 — Procedural Dragon Factory
 - [x] Batch 3 — Player Control & Companions
 - [x] Batch 4 — Game State, Stats & HUD
-- [ ] Batch 5 — Resources & Harvesting
+- [x] Batch 5 — Resources & Harvesting
 - [ ] Batch 6 — Dragon Store & Pack Store
 - [ ] Batch 7 — Card Crafting Center
 - [ ] Batch 8 — Construction & Castle Walls

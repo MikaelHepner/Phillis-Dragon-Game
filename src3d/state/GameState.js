@@ -51,8 +51,8 @@ export class GameState extends Emitter {
   constructor() {
     super();
     // Resource state (TECHNICAL_ARCHITECTURE.md §3). Seeded with a small
-    // starting stash so the HUD and feeding are demonstrable before Batch 5
-    // adds harvesting; the 2D game starts these at 0.
+    // starting stash so feeding works from the first minute; harvesting (Batch
+    // 5) tops these up from trees/rocks. The 2D game starts these at 0.
     this.resources = { apples: 8, coins: 25, wood: 0, fish: 0, stone: 3 };
     this.ownedDragons = []; // [{ id, name, key, stats }]
     this.selectedId = null;

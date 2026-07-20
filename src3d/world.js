@@ -94,24 +94,53 @@ function buildWater(scene) {
   return water;
 }
 
+// Shared geometry/materials — one copy reused across every tree/rock so the
+// 30 trees + 20 rocks don't each allocate their own buffers.
+const TRUNK_GEO = new THREE.CylinderGeometry(2.4, 3.4, 16, 7);
+const TRUNK_MAT = new THREE.MeshLambertMaterial({ color: 0x8a5a2b, flatShading: true });
+const LEAF_MAT = new THREE.MeshLambertMaterial({ color: 0x37a446, flatShading: true });
+const APPLE_GEO = new THREE.SphereGeometry(1.8, 8, 8);
+const APPLE_MAT = new THREE.MeshLambertMaterial({ color: 0xe23b2e });
+const ROCK_MAT = new THREE.MeshLambertMaterial({ color: 0x8d8d94, flatShading: true });
+
+const LEAF_BLOBS = [
+  { r: 13, x: 0, y: 26, z: 0 },
+  { r: 9, x: 8, y: 22, z: 3 },
+  { r: 9, x: -7, y: 23, z: -4 },
+  { r: 8, x: 2, y: 32, z: -3 },
+];
+
 function buildTree({ x, z }) {
   const tree = new THREE.Group();
 
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.2, 3, 14, 7),
-    new THREE.MeshLambertMaterial({ color: 0x7a4a21 })
-  );
-  trunk.position.y = 7;
+  const trunk = new THREE.Mesh(TRUNK_GEO, TRUNK_MAT);
+  trunk.position.y = 8;
   trunk.castShadow = true;
   tree.add(trunk);
 
-  const foliage = new THREE.Mesh(
-    new THREE.ConeGeometry(13, 28, 8),
-    new THREE.MeshLambertMaterial({ color: 0x2e8b32, flatShading: true })
-  );
-  foliage.position.y = 26;
-  foliage.castShadow = true;
-  tree.add(foliage);
+  // Rounded low-poly canopy: a few overlapping icosphere blobs.
+  for (const b of LEAF_BLOBS) {
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(b.r, 0), LEAF_MAT);
+    leaf.position.set(b.x, b.y, b.z);
+    leaf.rotation.set(Math.random(), Math.random(), Math.random());
+    leaf.castShadow = true;
+    tree.add(leaf);
+  }
+
+  // Apple-bearing: red spheres nestled in the canopy, kept in their own group
+  // so the harvest system can hide them on pick and pop them back on regrow
+  // (userData.applesGroup).
+  const applesGroup = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const apple = new THREE.Mesh(APPLE_GEO, APPLE_MAT);
+    const ang = Math.random() * Math.PI * 2;
+    const rad = 8 + Math.random() * 6;
+    apple.position.set(Math.cos(ang) * rad, 22 + Math.random() * 10, Math.sin(ang) * rad);
+    apple.castShadow = true;
+    applesGroup.add(apple);
+  }
+  tree.add(applesGroup);
+  tree.userData.applesGroup = applesGroup;
 
   tree.position.set(x, 0, z);
   tree.rotation.y = Math.random() * Math.PI * 2;
@@ -123,17 +152,23 @@ function buildTree({ x, z }) {
 }
 
 function buildRock({ x, z }) {
-  const rock = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(5, 0),
-    new THREE.MeshLambertMaterial({ color: 0x8d8d94, flatShading: true })
-  );
-  rock.position.set(x, 2.5, z);
-  rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+  // A cluster of chunks inside a group. The group's scale stays 1 so the
+  // harvest system can crumble/regrow the whole rock with a single uniform
+  // tween (the flattened look lives on the inner chunks).
+  const rock = new THREE.Group();
   const spread = 0.7 + Math.random() * 0.8;
-  rock.scale.set(spread, 0.5 + Math.random() * 0.6, spread);
-  rock.castShadow = true;
-  rock.receiveShadow = true;
-  rock.userData.collideRadius = 5 * spread;
+  const chunks = 2 + ((Math.random() * 2) | 0);
+  for (let i = 0; i < chunks; i++) {
+    const chunk = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 2, 0), ROCK_MAT);
+    chunk.position.set((Math.random() - 0.5) * 6, 2 + Math.random() * 2, (Math.random() - 0.5) * 6);
+    chunk.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    chunk.scale.set(spread, 0.55 + Math.random() * 0.5, spread);
+    chunk.castShadow = true;
+    chunk.receiveShadow = true;
+    rock.add(chunk);
+  }
+  rock.position.set(x, 0, z);
+  rock.userData.collideRadius = 6 * spread;
   return rock;
 }
 

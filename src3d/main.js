@@ -8,6 +8,7 @@ import { PlayerController } from './player/PlayerController.js';
 import { CompanionManager } from './companions/CompanionManager.js';
 import { GameState, DECAY_INTERVAL_MS, starterStats } from './state/GameState.js';
 import { Hud } from './ui/Hud.js';
+import { HarvestManager } from './harvest/HarvestManager.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -124,11 +125,14 @@ function pickDragon(clientX, clientY) {
   return true;
 }
 
+// A tap first tries to select a clicked dragon, then to harvest a clicked
+// node in range; otherwise it falls through to click-to-move (which walks the
+// player toward a distant node so walk-into harvesting finishes the job).
 const player = new PlayerController(playerDragon, camera, canvas, {
   colliders,
   bounds,
   groundY: GROUND_Y,
-  onClick: pickDragon,
+  onClick: (x, y) => pickDragon(x, y) || harvest.tryClick(x, y, player.position),
 });
 
 // Select the player dragon by default so the caretaking panel is populated.
@@ -140,16 +144,21 @@ const cameraRig = new CameraRig(camera, playerDragon.group, canvas);
 const decayTimer = setInterval(() => state.tickDecay(), DECAY_INTERVAL_MS);
 window.addEventListener('beforeunload', () => clearInterval(decayTimer));
 
-// — Floating emoji feedback for caretaking actions —
+// — Floating text feedback (caretaking emoji + harvest "+1 🍎" pops) —
+// `getPos` returns a live world-space anchor; `base` is the height above it.
 const floaters = [];
-function floatEmoji(dragon, text) {
+function floatText(getPos, text, base = 34, size = 26) {
   const el = document.createElement('div');
   el.textContent = text;
   el.style.cssText =
-    'position:absolute;font-size:26px;pointer-events:none;user-select:none;' +
-    'transform:translate(-50%,-50%);transition:none;z-index:5;text-shadow:0 2px 3px rgba(0,0,0,0.35)';
+    `position:absolute;font-size:${size}px;font-weight:bold;pointer-events:none;` +
+    'user-select:none;white-space:nowrap;transform:translate(-50%,-50%);transition:none;' +
+    'z-index:5;color:#fff;text-shadow:0 2px 3px rgba(0,0,0,0.45)';
   document.body.appendChild(el);
-  floaters.push({ el, dragon, t: 0 });
+  floaters.push({ el, getPos, base, t: 0 });
+}
+function floatOnDragon(dragon, text) {
+  if (dragon) floatText(() => dragon.group.position, text);
 }
 function updateFloaters(dt) {
   const v = new THREE.Vector3();
@@ -161,8 +170,8 @@ function updateFloaters(dt) {
       floaters.splice(i, 1);
       continue;
     }
-    v.copy(f.dragon.group.position);
-    v.y += 34 + f.t * 22; // rise as it fades
+    v.copy(f.getPos());
+    v.y += f.base + f.t * 22; // rise as it fades
     v.project(camera);
     f.el.style.left = `${(v.x * 0.5 + 0.5) * window.innerWidth}px`;
     f.el.style.top = `${(-v.y * 0.5 + 0.5) * window.innerHeight}px`;
@@ -170,18 +179,29 @@ function updateFloaters(dt) {
   }
 }
 
-// Play a little hop + emoji when a dragon is cared for.
+// Play a little emoji pop when a dragon is cared for.
 function reactTo(id) {
   const s = selectables.find((x) => x.id === id);
   return s ? s.dragon : null;
 }
-state.on('feed', (d) => floatEmoji(reactTo(d.id), '🍎'));
-state.on('pet', (d) => floatEmoji(reactTo(d.id), '💖'));
-state.on('rest', (d) => floatEmoji(reactTo(d.id), '💤'));
-state.on('feedFail', (d) => floatEmoji(reactTo(d.id), '❌'));
+state.on('feed', (d) => floatOnDragon(reactTo(d.id), '🍎'));
+state.on('pet', (d) => floatOnDragon(reactTo(d.id), '💖'));
+state.on('rest', (d) => floatOnDragon(reactTo(d.id), '💤'));
+state.on('feedFail', (d) => floatOnDragon(reactTo(d.id), '❌'));
+
+// — Harvesting: apples from trees, coins + stone from rocks (Batch 5) —
+const harvest = new HarvestManager({
+  camera,
+  onHarvest(node, cfg) {
+    for (const y of cfg.yields) state.addResource(y.res, y.amount);
+    floatText(() => node.floatAnchor, cfg.label, 0, 22);
+  },
+});
+world.trees.forEach((t) => harvest.addTree(t));
+world.rocks.forEach((r) => harvest.addRock(r));
 
 // Debug hook for automated verification (harmless in normal play).
-window.__game = { player, companions, playerDragon, state };
+window.__game = { player, companions, playerDragon, state, harvest };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -203,6 +223,7 @@ function animate() {
   world.update(time);
   player.update(dt);
   companions.update(dt, player.position);
+  harvest.update(dt, player.position);
 
   // Keep the selection ring pinned under the selected dragon.
   if (selectedDragon) {
