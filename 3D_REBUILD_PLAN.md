@@ -208,7 +208,7 @@ verify the "Done when" checklist in the browser, then move to the next batch.
 - [x] Batch 1 — Scaffold & World Shell
 - [x] Batch 2 — Procedural Dragon Factory
 - [x] Batch 3 — Player Control & Companions
-- [ ] Batch 4 — Game State, Stats & HUD
+- [x] Batch 4 — Game State, Stats & HUD
 - [ ] Batch 5 — Resources & Harvesting
 - [ ] Batch 6 — Dragon Store & Pack Store
 - [ ] Batch 7 — Card Crafting Center

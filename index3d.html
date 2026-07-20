@@ -19,38 +19,199 @@
         width: 100%;
         height: 100%;
       }
-      #hud {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        pointer-events: none;
-        user-select: none;
-      }
+
+      /* Shared chunky chip look */
       .hud-chip {
-        display: inline-block;
-        background: rgba(255, 255, 255, 0.85);
+        display: inline-flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.9);
         border: 3px solid #5a3e2b;
         border-radius: 14px;
-        padding: 6px 14px;
-        margin-right: 8px;
+        padding: 6px 12px;
         font-size: 18px;
         font-weight: bold;
         color: #5a3e2b;
         box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2);
       }
-      #fps {
+
+      /* Top-left: resources + controls hint */
+      #top-left {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        pointer-events: none;
+        user-select: none;
+        max-width: 62vw;
+      }
+      #resource-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .resource-val { margin-left: 2px; min-width: 1ch; }
+      #hint {
+        font-size: 13px;
+        padding: 5px 10px;
+        opacity: 0.9;
+      }
+
+      /* Top-right: fps + backpack */
+      #top-right {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        user-select: none;
+      }
+      #fps { font-size: 14px; padding: 4px 10px; pointer-events: none; }
+      #backpack-btn {
+        cursor: pointer;
+        border: none;
+        font-family: inherit;
+      }
+      #backpack-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.2); }
+
+      #backpack-panel {
+        position: absolute;
+        top: 56px;
+        right: 12px;
+        width: 200px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 4px solid #5a3e2b;
+        border-radius: 18px;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+        padding: 10px 14px;
+        display: none;
+        color: #5a3e2b;
+      }
+      #backpack-panel.open { display: block; }
+      #backpack-panel h3 {
+        margin: 2px 0 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 18px;
+      }
+      #backpack-close {
+        cursor: pointer;
+        border: none;
+        background: #e5cfa8;
+        border-radius: 8px;
+        font-weight: bold;
+        padding: 2px 8px;
+      }
+      #backpack-list { list-style: none; margin: 0; padding: 0; }
+      #backpack-list li {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 2px;
+        font-size: 16px;
+        border-bottom: 2px dotted rgba(90, 62, 43, 0.25);
+      }
+
+      /* Bottom-left: selected-dragon caretaking panel */
+      #dragon-panel {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        width: 280px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 4px solid #5a3e2b;
+        border-radius: 18px;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+        padding: 12px 14px;
+        color: #5a3e2b;
+        user-select: none;
+      }
+      #dragon-panel.hidden { display: none; }
+      .dragon-name {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .stat-bars { display: flex; flex-direction: column; gap: 6px; }
+      .stat-row { display: flex; align-items: center; gap: 8px; }
+      .stat-label { font-size: 16px; width: 20px; text-align: center; }
+      .stat-track {
+        flex: 1;
+        height: 14px;
+        background: #e5d5bd;
+        border: 2px solid #5a3e2b;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stat-fill {
+        height: 100%;
+        width: 100%;
+        border-radius: 6px 0 0 6px;
+        transition: width 0.3s ease;
+      }
+      .bar-hp { background: #e74c3c; }
+      .bar-hunger { background: #f39c12; }
+      .bar-energy { background: #3498db; }
+      .bar-love { background: #e84393; }
+      .stat-fill.bar-low { animation: lowpulse 0.8s ease-in-out infinite; }
+      @keyframes lowpulse {
+        0%, 100% { filter: brightness(1); }
+        50% { filter: brightness(1.6); }
+      }
+      .stat-value {
+        font-size: 13px;
+        font-weight: bold;
+        width: 26px;
+        text-align: right;
+      }
+      .dragon-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .action-btn {
+        flex: 1;
+        cursor: pointer;
+        font-family: inherit;
         font-size: 14px;
-        padding: 4px 10px;
+        font-weight: bold;
+        color: #5a3e2b;
+        background: #ffe08a;
+        border: 3px solid #5a3e2b;
+        border-radius: 12px;
+        padding: 6px 4px;
+        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2);
+      }
+      .action-btn:hover { background: #ffd75e; }
+      .action-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2); }
+
+      @media (max-width: 640px) {
+        #dragon-panel { width: 56vw; }
+        #top-left { max-width: 52vw; }
+        .hud-chip { font-size: 15px; padding: 5px 9px; }
       }
     </style>
   </head>
   <body>
     <canvas id="game-canvas"></canvas>
-    <div id="hud">
-      <span class="hud-chip">🐉 Dragon Island 3D</span>
-      <span class="hud-chip">WASD / Arrows to walk · Click ground to move · Drag to orbit</span>
-      <span class="hud-chip" id="fps">-- fps</span>
+
+    <div id="top-left">
+      <div id="resource-bar"></div>
+      <span class="hud-chip" id="hint">WASD / Arrows to walk · Click ground to move · Click a dragon to care for it · Drag to orbit</span>
     </div>
+
+    <div id="top-right">
+      <span class="hud-chip" id="fps">-- fps</span>
+      <button class="hud-chip" id="backpack-btn">🎒 Backpack</button>
+    </div>
+
+    <div id="backpack-panel">
+      <h3>🎒 Backpack <button id="backpack-close">✕</button></h3>
+      <ul id="backpack-list"></ul>
+    </div>
+
+    <div id="dragon-panel" class="hidden"></div>
+
     <script type="module" src="/src3d/main.js"></script>
   </body>
 </html>

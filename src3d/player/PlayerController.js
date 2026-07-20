@@ -17,12 +17,15 @@ const CLICK_DRAG_TOLERANCE = 6; // px; larger presses are camera-orbit drags
 const ARRIVE_DIST = 6; // stop this close to a click target
 
 export class PlayerController {
-  constructor(dragon, camera, canvas, { colliders, bounds, groundY = 2, speed = 115 }) {
+  constructor(dragon, camera, canvas, { colliders, bounds, groundY = 2, speed = 115, onClick = null }) {
     this.mover = new MovableDragon(dragon, { colliders, bounds, speed, groundY });
     this.camera = camera;
     this.groundY = groundY;
     this.keys = new Set();
     this.moveTarget = null; // THREE.Vector3 on the ground plane, or null
+    // Optional interceptor: given (clientX, clientY) it may consume the tap
+    // (e.g. selecting a clicked dragon). Return true to suppress click-to-move.
+    this.onClick = onClick;
 
     // Scratch vectors reused every frame.
     this._forward = new THREE.Vector3();
@@ -51,6 +54,8 @@ export class PlayerController {
       const dragged = Math.hypot(e.clientX - this._downAt.x, e.clientY - this._downAt.y);
       this._downAt = null;
       if (dragged > CLICK_DRAG_TOLERANCE) return;
+      // Let an interceptor claim the tap (e.g. selecting a dragon) first.
+      if (this.onClick && this.onClick(e.clientX, e.clientY)) return;
       this.#setTargetFromPointer(e.clientX, e.clientY);
     });
   }
