@@ -1,6 +1,13 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createWorld, WORLD_CENTER } from './world.js';
 import { CameraRig } from './cameraRig.js';
+import { createDragon } from './dragons/DragonFactory.js';
+import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
+import { PlayerController } from './player/PlayerController.js';
+import { CompanionManager } from './companions/CompanionManager.js';
+
+const GROUND_Y = 2; // dragons' feet rest here on the grass
 
 const canvas = document.getElementById('game-canvas');
 
@@ -15,6 +22,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x7ec8e3);
 scene.fog = new THREE.Fog(0x7ec8e3, 900, 2600);
 
+// Environment map so metallic / glass / crystal dragon skins have something
+// to reflect (matches the gallery's setup).
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
 const camera = new THREE.PerspectiveCamera(
   55,
   window.innerWidth / window.innerHeight,
@@ -23,17 +35,38 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const world = createWorld(scene);
+const { colliders, bounds } = world;
 
-// Placeholder "player" — replaced by the starter dragon in Batch 3.
-const player = new THREE.Mesh(
-  new THREE.CapsuleGeometry(6, 12, 6, 12),
-  new THREE.MeshLambertMaterial({ color: 0xf2a541 })
-);
-player.position.set(WORLD_CENTER.x, 12, WORLD_CENTER.z);
-player.castShadow = true;
-scene.add(player);
+// — Player: the starter dragon (Phillis) —
+const playerDragon = createDragon(DRAGON_TYPES_BY_ID.phillis);
+playerDragon.group.position.set(WORLD_CENTER.x, GROUND_Y, WORLD_CENTER.z);
+scene.add(playerDragon.group);
 
-const cameraRig = new CameraRig(camera, player, canvas);
+const player = new PlayerController(playerDragon, camera, canvas, {
+  colliders,
+  bounds,
+  groundY: GROUND_Y,
+});
+
+// — Two test companions trailing the player —
+const companions = new CompanionManager({ colliders, bounds, groundY: GROUND_Y });
+const testCompanions = ['fire', 'water'];
+testCompanions.forEach((id, i) => {
+  const dragon = createDragon(DRAGON_TYPES_BY_ID[id]);
+  // Spawn just behind the player so they fall into the follow chain.
+  dragon.group.position.set(
+    WORLD_CENTER.x + (i - 0.5) * 40,
+    GROUND_Y,
+    WORLD_CENTER.z - 55 - i * 40
+  );
+  scene.add(dragon.group);
+  companions.add(dragon);
+});
+
+const cameraRig = new CameraRig(camera, playerDragon.group, canvas);
+
+// Debug hook for automated verification (harmless in normal play).
+window.__game = { player, companions, playerDragon };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -49,13 +82,12 @@ let fpsTimer = 0;
 const clock = new THREE.Clock();
 
 function animate() {
-  const dt = clock.getDelta();
+  const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
 
   world.update(time);
-
-  // Idle bob so the scene reads as alive before real animations arrive.
-  player.position.y = 12 + Math.sin(time * 2.2) * 1.2;
+  player.update(dt);
+  companions.update(dt, player.position);
 
   cameraRig.update();
   renderer.render(scene, camera);

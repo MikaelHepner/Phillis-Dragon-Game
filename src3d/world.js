@@ -117,6 +117,8 @@ function buildTree({ x, z }) {
   tree.rotation.y = Math.random() * Math.PI * 2;
   const s = 0.85 + Math.random() * 0.5;
   tree.scale.setScalar(s);
+  // Trunk footprint used for player/companion collision (Batch 3).
+  tree.userData.collideRadius = 8 * s;
   return tree;
 }
 
@@ -127,9 +129,11 @@ function buildRock({ x, z }) {
   );
   rock.position.set(x, 2.5, z);
   rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-  rock.scale.set(0.7 + Math.random() * 0.8, 0.5 + Math.random() * 0.6, 0.7 + Math.random() * 0.8);
+  const spread = 0.7 + Math.random() * 0.8;
+  rock.scale.set(spread, 0.5 + Math.random() * 0.6, spread);
   rock.castShadow = true;
   rock.receiveShadow = true;
+  rock.userData.collideRadius = 5 * spread;
   return rock;
 }
 
@@ -161,11 +165,16 @@ export function createWorld(scene) {
   buildGround(scene);
   const water = buildWater(scene);
 
+  // Static obstacles the player/companions can't walk through (Batch 3).
+  // Each is a circle on the ground plane: { x, z, radius }.
+  const colliders = [];
+
   const trees = [];
   for (let i = 0; i < TREE_COUNT; i++) {
     const tree = buildTree(randomSpawnPosition());
     trees.push(tree);
     scene.add(tree);
+    colliders.push({ x: tree.position.x, z: tree.position.z, radius: tree.userData.collideRadius });
   }
 
   const rocks = [];
@@ -173,12 +182,16 @@ export function createWorld(scene) {
     const rock = buildRock(randomSpawnPosition());
     rocks.push(rock);
     scene.add(rock);
+    colliders.push({ x: rock.position.x, z: rock.position.z, radius: rock.userData.collideRadius });
   }
 
   return {
     water,
     trees,
     rocks,
+    colliders,
+    // Walkable bounds: keep entities a margin inside the ground plane edge.
+    bounds: { size: WORLD_SIZE, margin: 40 },
     update(time) {
       // Gentle tide so the water edge feels alive.
       water.position.y = -4 + Math.sin(time * 0.8) * 0.6;
