@@ -55,6 +55,8 @@ export class StoreUI {
     this.packPanel.classList.remove('open');
     document.getElementById('backpack-panel')?.classList.remove('open');
     document.getElementById('craft-panel')?.classList.remove('open');
+    document.getElementById('build-panel')?.classList.remove('open');
+    document.getElementById('upgrade-panel')?.classList.remove('open');
   }
 
   // — Dragon Store ——————————————————————————————————————————————

@@ -134,6 +134,15 @@ export class HarvestManager {
     this.nodes.push(new HarvestNode(object, ROCK));
   }
 
+  /**
+   * Retire the node attached to a scenery object (Batch 8: wall tiles destroy
+   * trees/rocks within 30 units, and a removed tree must stop yielding).
+   */
+  removeObject(object) {
+    const i = this.nodes.findIndex((n) => n.object === object);
+    if (i >= 0) this.nodes.splice(i, 1);
+  }
+
   #collect(node) {
     const cfg = node.harvest();
     if (cfg) this.onHarvest(node, cfg);

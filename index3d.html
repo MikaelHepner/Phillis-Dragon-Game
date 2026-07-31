@@ -576,6 +576,69 @@
       }
       #backpack-cards .empty { font-size: 13px; opacity: 0.7; }
 
+      /* — Batch 8: Construction Hub, upgrade menu, placement mode — */
+
+      #build-btn { cursor: pointer; border: none; font-family: inherit; }
+      #build-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.2); }
+
+      .build-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #f6ead2;
+        border: 3px solid #5a3e2b;
+        border-radius: 14px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+      }
+      .build-icon {
+        font-size: 44px;
+        width: 56px;
+        text-align: center;
+        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+      }
+      .build-info { flex: 1; min-width: 0; }
+      .build-name { font-size: 18px; font-weight: bold; }
+      .build-cost { display: flex; gap: 6px; margin: 3px 0; flex-wrap: wrap; }
+      .cost-chip {
+        font-size: 13px;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 1px 7px;
+        border: 2px solid #5a3e2b;
+      }
+      .cost-chip.ok { background: #c9f2c7; color: #1e7a2e; }
+      .cost-chip.short { background: #f6c7c0; color: #a52a1d; }
+      .build-desc { font-size: 13px; opacity: 0.8; }
+      .build-go { flex-shrink: 0; background: #3cab4b; color: #fff; }
+      .build-go.disabled {
+        background: #9a9a9a;
+        cursor: default;
+        pointer-events: none;
+      }
+
+      .upgrade-status { text-align: center; font-size: 16px; padding: 6px 0 12px; }
+      .upgrade-status .status-active { font-weight: bold; color: #1e7a2e; }
+      .upgrade-status .status-flavor { font-size: 14px; opacity: 0.75; }
+
+      /* Placement-mode hint bar (bottom center while the ghost is active) */
+      #place-hint {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        display: none;
+        font-size: 16px;
+        z-index: 6;
+        pointer-events: none;
+        animation: hintbob 1.4s ease-in-out infinite;
+      }
+      #place-hint.open { display: inline-flex; }
+      @keyframes hintbob {
+        0%, 100% { transform: translateX(-50%) translateY(0); }
+        50% { transform: translateX(-50%) translateY(-4px); }
+      }
+
       @media (max-width: 640px) {
         #dragon-panel { width: 56vw; }
         #top-left { max-width: 52vw; }
@@ -595,6 +658,7 @@
       <span class="hud-chip" id="fps">-- fps</span>
       <button class="hud-chip" id="store-btn">🛒 Store</button>
       <button class="hud-chip" id="craft-btn">⚒️ Craft</button>
+      <button class="hud-chip" id="build-btn">🏗️ Build</button>
       <button class="hud-chip" id="backpack-btn">🎒 Backpack</button>
     </div>
 
@@ -607,6 +671,9 @@
     <div class="overlay-panel" id="store-panel"></div>
     <div class="overlay-panel" id="pack-panel"></div>
     <div class="overlay-panel" id="craft-panel"></div>
+    <div class="overlay-panel" id="build-panel"></div>
+    <div class="overlay-panel" id="upgrade-panel"></div>
+    <span class="hud-chip" id="place-hint"></span>
 
     <div id="dragon-panel" class="hidden"></div>
 

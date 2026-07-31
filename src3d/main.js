@@ -17,7 +17,10 @@ import {
 import { Hud } from './ui/Hud.js';
 import { StoreUI } from './ui/StoreUI.js';
 import { CraftingUI } from './ui/CraftingUI.js';
+import { BuildUI } from './ui/BuildUI.js';
 import { HarvestManager } from './harvest/HarvestManager.js';
+import { ConstructionManager } from './structures/ConstructionManager.js';
+import { PRODUCTION_INTERVAL_MS } from './data/structures.js';
 import { cardIcon } from './data/cards.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
@@ -143,14 +146,19 @@ function pickDragon(clientX, clientY) {
   return true;
 }
 
-// A tap first tries to select a clicked dragon, then to harvest a clicked
-// node in range; otherwise it falls through to click-to-move (which walks the
-// player toward a distant node so walk-into harvesting finishes the job).
+// Tap routing, in priority order: placement mode consumes every click, then
+// dragon selection, then a placed structure (upgrade menu), then a harvest
+// node in range; otherwise the tap falls through to click-to-move (which
+// walks the player toward a distant node so walk-into harvesting finishes).
 const player = new PlayerController(playerDragon, camera, canvas, {
   colliders,
   bounds,
   groundY: GROUND_Y,
-  onClick: (x, y) => pickDragon(x, y) || harvest.tryClick(x, y, player.position),
+  onClick: (x, y) =>
+    construction.handleClick(x, y) ||
+    pickDragon(x, y) ||
+    construction.tryClickStructure(x, y) ||
+    harvest.tryClick(x, y, player.position),
 });
 
 // Select the player dragon by default so the caretaking panel is populated.
@@ -268,8 +276,31 @@ const harvest = new HarvestManager({
 world.trees.forEach((t) => harvest.addTree(t));
 world.rocks.forEach((r) => harvest.addRock(r));
 
+// — Construction (Batch 8): ghost placement, structures, defensive walls —
+const construction = new ConstructionManager({
+  scene,
+  camera,
+  state,
+  colliders,
+  bounds,
+  world,
+  harvest,
+  getDragonPositions: () => selectables.map((s) => s.dragon.group.position),
+  floatText,
+});
+new BuildUI(state, construction);
+
+// Passive mine/blacksmith yield: one global 5s loop over all structures,
+// exactly like the 2D house-yield timer (TECHNICAL_ARCHITECTURE.md §4).
+const productionTimer = setInterval(() => state.tickProduction(), PRODUCTION_INTERVAL_MS);
+window.addEventListener('beforeunload', () => clearInterval(productionTimer));
+state.on('produced', ({ structure, label }) => {
+  const anchor = construction.anchorFor(structure.id);
+  if (anchor) floatText(() => anchor, label, 14, 20);
+});
+
 // Debug hook for automated verification (harmless in normal play).
-window.__game = { player, companions, playerDragon, state, harvest };
+window.__game = { player, companions, playerDragon, state, harvest, construction };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -292,6 +323,7 @@ function animate() {
   player.update(dt);
   companions.update(dt, player.position);
   harvest.update(dt, player.position);
+  construction.update(dt);
 
   // Keep the selection ring pinned under the selected dragon.
   if (selectedDragon) {

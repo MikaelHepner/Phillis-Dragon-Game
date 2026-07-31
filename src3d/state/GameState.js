@@ -12,6 +12,7 @@ import {
   CRAFT_DRAGON_TYPES,
   GIVEABLE_CARD_RESOURCES,
 } from '../data/cards.js';
+import { BUILDINGS_BY_ID, UPGRADES_BY_ID, PRODUCTION } from '../data/structures.js';
 
 // — Tunables copied from the 2D source (code wins over docs) —
 export const DECAY_INTERVAL_MS = 15000; // MainScene global stat-decay loop
@@ -71,6 +72,11 @@ export class GameState extends Emitter {
     this.ownedCards = []; // [{ name, type, key }] — 2D MainScene.ownedCards shape
     this.selectedId = null;
     this.craftCount = 0; // uniquifies crafted-dragon ids (dupes are allowed)
+    // Placed structures, matching the TECHNICAL_ARCHITECTURE.md §5 save shape
+    // (which uses x/y for the 2D top-down plane — our z maps to its y):
+    // [{ id, type: 'house'|'castle', x, z, upgradeType: null|'tower'|'mine'|'blacksmith' }]
+    this.structures = [];
+    this.structureCount = 0;
   }
 
   // — Ownership ————————————————————————————————————————————————
@@ -262,6 +268,76 @@ export class GameState extends Emitter {
     const gift = { card, dragon, resource };
     this.emit('cardGiven', gift);
     return gift;
+  }
+
+  // — Construction (2D UIScene build/upgrade menus, Batch 8) ————————
+  /** True when every resource in a { wood: 3, fish: 1 }-style cost is stocked. */
+  canAfford(cost) {
+    return Object.entries(cost).every(([res, n]) => (this.resources[res] ?? 0) >= n);
+  }
+
+  #spend(cost) {
+    for (const [res, n] of Object.entries(cost)) this.resources[res] -= n;
+    this.emit('resources', this.resources);
+  }
+
+  getStructure(id) {
+    return this.structures.find((s) => s.id === id) || null;
+  }
+
+  /**
+   * Place a building at a ground position (the placement UI has already
+   * validated the spot). Deducts the cost and emits 'structureAdded' — the
+   * scene layer spawns the mesh, and a castle triggers the wall rebuild.
+   * Unlike the 2D game (which deducted in the UI with no re-check), cost is
+   * validated here so no call path can drive resources negative.
+   * Returns the new entry, or null if unaffordable.
+   */
+  buildStructure(buildingId, x, z) {
+    const def = BUILDINGS_BY_ID[buildingId];
+    if (!def || !this.canAfford(def.cost)) return null;
+    this.#spend(def.cost);
+    const entry = {
+      id: `struct_${++this.structureCount}`,
+      type: def.id,
+      x,
+      z,
+      upgradeType: null,
+    };
+    this.structures.push(entry);
+    this.emit('structureAdded', entry);
+    return entry;
+  }
+
+  /**
+   * Convert a structure into its one-shot upgrade class (2D upgradeHouse):
+   * tower / mine / blacksmith, irreversible. Houses AND castles are
+   * upgradable — GAME_DESIGN.md §9: "Click any placed house/castle".
+   * Returns the entry, or null (unknown / already upgraded / unaffordable).
+   */
+  upgradeStructure(structureId, upgradeId) {
+    const s = this.getStructure(structureId);
+    const up = UPGRADES_BY_ID[upgradeId];
+    if (!s || !up || s.upgradeType || !this.canAfford(up.cost)) return null;
+    this.#spend(up.cost);
+    s.upgradeType = up.id;
+    this.emit('structureUpgraded', s);
+    return s;
+  }
+
+  /**
+   * Passive production tick (call every PRODUCTION_INTERVAL_MS): every mine
+   * yields +1 stone, every blacksmith +1 wood, credited straight into the
+   * stash exactly like the 2D global 5s loop. Emits 'produced' per structure
+   * so the scene can float the yield text over each building.
+   */
+  tickProduction() {
+    for (const s of this.structures) {
+      const out = PRODUCTION[s.upgradeType];
+      if (!out) continue;
+      this.addResource(out.resource, out.amount);
+      this.emit('produced', { structure: s, ...out });
+    }
   }
 
   // — Caretaking interactions ——————————————————————————————————
