@@ -6,10 +6,19 @@ import { createDragon } from './dragons/DragonFactory.js';
 import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
 import { PlayerController } from './player/PlayerController.js';
 import { CompanionManager } from './companions/CompanionManager.js';
-import { GameState, DECAY_INTERVAL_MS, starterStats } from './state/GameState.js';
+import {
+  GameState,
+  DECAY_INTERVAL_MS,
+  starterStats,
+  GIVE_TICK_MS,
+  GIVE_TICK_COUNT,
+  GIVE_ICON_MS,
+} from './state/GameState.js';
 import { Hud } from './ui/Hud.js';
 import { StoreUI } from './ui/StoreUI.js';
+import { CraftingUI } from './ui/CraftingUI.js';
 import { HarvestManager } from './harvest/HarvestManager.js';
+import { cardIcon } from './data/cards.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -45,6 +54,7 @@ const { colliders, bounds } = world;
 const state = new GameState();
 new Hud(state);
 new StoreUI(state); // dragon store + pack store overlays (Batch 6)
+new CraftingUI(state); // card crafting center overlay (Batch 7)
 
 // Registry of selectable dragons in the world: { id, dragon } keyed for
 // raycasting and for playing per-dragon feedback animations.
@@ -70,10 +80,11 @@ register('phillis', playerDragon, playerEntry);
 // replaced the Batch-3 hard-coded test companions with real purchases.) —
 const companions = new CompanionManager({ colliders, bounds, groundY: GROUND_Y });
 
-// Any dragon added to the collection after boot (store purchase now, crafting
-// in Batch 7) spawns just behind the player and joins the follow chain.
+// Any dragon added to the collection after boot (store purchase or a crafted
+// dragon) spawns just behind the player and joins the follow chain. Crafted
+// dragons have unique ids, so the factory config comes from entry.typeId.
 state.on('dragonAdded', (entry) => {
-  const type = DRAGON_TYPES_BY_ID[entry.id];
+  const type = DRAGON_TYPES_BY_ID[entry.typeId];
   if (!type || entry.id === 'phillis') return;
   const dragon = createDragon(type);
   const yaw = playerDragon.group.rotation.y;
@@ -186,6 +197,38 @@ function updateFloaters(dt) {
   }
 }
 
+// Pinned text: like a floater but it bobs above a dragon for a set duration
+// (the 2D game's yoyo-tweened card icon during resource generation).
+const pins = [];
+function pinText(getPos, text, durationMs, base = 48) {
+  const el = document.createElement('div');
+  el.textContent = text;
+  el.style.cssText =
+    'position:absolute;font-size:26px;pointer-events:none;user-select:none;' +
+    'white-space:nowrap;transform:translate(-50%,-50%);z-index:5;' +
+    'filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4))';
+  document.body.appendChild(el);
+  pins.push({ el, getPos, base, t: 0, dur: durationMs / 1000 });
+}
+function updatePins(dt) {
+  const v = new THREE.Vector3();
+  for (let i = pins.length - 1; i >= 0; i--) {
+    const p = pins[i];
+    p.t += dt;
+    if (p.t >= p.dur) {
+      p.el.remove();
+      pins.splice(i, 1);
+      continue;
+    }
+    v.copy(p.getPos());
+    v.y += p.base + Math.sin(p.t * 3.2) * 6; // gentle bob
+    v.project(camera);
+    p.el.style.left = `${(v.x * 0.5 + 0.5) * window.innerWidth}px`;
+    p.el.style.top = `${(-v.y * 0.5 + 0.5) * window.innerHeight}px`;
+    p.el.style.opacity = `${Math.min(1, (p.dur - p.t) / 1.5)}`; // fade at the end
+  }
+}
+
 // Play a little emoji pop when a dragon is cared for.
 function reactTo(id) {
   const s = selectables.find((x) => x.id === id);
@@ -195,6 +238,24 @@ state.on('feed', (d) => floatOnDragon(reactTo(d.id), '🍎'));
 state.on('pet', (d) => floatOnDragon(reactTo(d.id), '💖'));
 state.on('rest', (d) => floatOnDragon(reactTo(d.id), '💤'));
 state.on('feedFail', (d) => floatOnDragon(reactTo(d.id), '❌'));
+state.on('dragonCrafted', (d) => floatOnDragon(reactTo(d.id), '🎉'));
+
+// — Give-card-to-dragon production (Batch 7, 2D handle*Generation timers):
+// the card's icon bobs over the dragon for 60s while it produces +1 of the
+// resource every 5s, 12 ticks total. Exact numbers live in GameState consts.
+const RESOURCE_POPS = { wood: '+1 🪵', fish: '+1 🐟', apples: '+1 🍎' };
+state.on('cardGiven', ({ card, dragon, resource }) => {
+  const target = reactTo(dragon.id);
+  if (!target) return;
+  const anchor = () => target.group.position;
+  pinText(anchor, cardIcon(card), GIVE_ICON_MS);
+  let ticks = 0;
+  const timer = setInterval(() => {
+    state.addResource(resource, 1);
+    floatText(anchor, RESOURCE_POPS[resource], 40, 20);
+    if (++ticks >= GIVE_TICK_COUNT) clearInterval(timer);
+  }, GIVE_TICK_MS);
+});
 
 // — Harvesting: apples from trees, coins + stone from rocks (Batch 5) —
 const harvest = new HarvestManager({
@@ -239,6 +300,7 @@ function animate() {
   }
 
   updateFloaters(dt);
+  updatePins(dt);
   cameraRig.update();
   renderer.render(scene, camera);
 

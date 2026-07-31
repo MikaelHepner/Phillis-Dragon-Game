@@ -54,6 +54,7 @@ export class StoreUI {
     this.storePanel.classList.remove('open');
     this.packPanel.classList.remove('open');
     document.getElementById('backpack-panel')?.classList.remove('open');
+    document.getElementById('craft-panel')?.classList.remove('open');
   }
 
   // — Dragon Store ——————————————————————————————————————————————
@@ -207,6 +208,8 @@ export class StoreUI {
 
   // — Tiny feedback toast at the top of the screen ————————————————
   #toast(message, good) {
+    // Newest message wins — rapid actions must not stack unreadably.
+    document.querySelectorAll('.store-toast').forEach((t) => t.remove());
     const el = document.createElement('div');
     el.className = `store-toast ${good ? 'good' : 'bad'}`;
     el.textContent = message;

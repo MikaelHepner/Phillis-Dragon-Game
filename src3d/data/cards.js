@@ -17,10 +17,38 @@ export const CARD_TYPES = [
   { name: 'Dragon Body', type: 'Part', key: 'part_body', icon: '🦴' },
 ];
 
+// — Crafting data (2D UIScene crafting menu, copied verbatim) —
+
+// The four components a complete dragon needs (UIScene requiredParts).
+export const PART_KEYS = ['part_head', 'part_wings', 'part_tail', 'part_body'];
+
+// Craftable outcomes — the exact dragonTypes list in UIScene's two craft paths.
+// (Note: no Stone — the 2D list skips it, so the 3D game does too.)
+export const CRAFT_DRAGON_TYPES = [
+  'Fire', 'Ice', 'Storm', 'Water', 'Poison', 'Plant', 'Soda', 'Sand',
+  'Metal', 'Paper', 'Diamond', 'Glass', 'Jacket', 'Light', 'Coffee',
+];
+
+// Card types that can be given to a dragon, and the resource each generates
+// (2D giveTree/giveFishingRod/giveAppleCard event handlers).
+export const GIVEABLE_CARD_RESOURCES = {
+  Trees: 'wood',
+  Fishing: 'fish',
+  Food: 'apples',
+  Farming: 'apples',
+};
+
 // Look up presentation for a card that may have come from state (which stores
 // only name/type/key). Falls back to a generic card icon.
 export function cardIcon(card) {
+  if (card.type === 'Combo') return '🧩';
   const match = CARD_TYPES.find((c) => c.name === card.name);
+  return match ? match.icon : '🃏';
+}
+
+/** Icon for a single part key (used for the mini part list on Combo cards). */
+export function partIcon(key) {
+  const match = CARD_TYPES.find((c) => c.key === key);
   return match ? match.icon : '🃏';
 }
 
