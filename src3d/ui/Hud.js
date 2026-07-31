@@ -4,6 +4,8 @@
 // Style is chunky and kid-friendly (GAME_DESIGN.md §11) via classes in
 // index3d.html.
 
+import { cardIcon } from '../data/cards.js';
+
 const STAT_META = [
   { key: 'hp', label: 'HP', icon: '❤️', cls: 'bar-hp' },
   { key: 'hunger', label: 'Hunger', icon: '🍎', cls: 'bar-hunger' },
@@ -33,6 +35,7 @@ export class Hud {
       this.#renderResources();
       this.#renderBackpack();
     });
+    state.on('cards', () => this.#renderBackpack());
     state.on('selection', (d) => this.#renderDragon(d));
     state.on('stats', (d) => {
       if (d && d.id === state.selectedId) this.#renderStats(d.stats);
@@ -159,5 +162,33 @@ export class Hud {
       li.innerHTML = `<span>${icon} ${key}</span><b>${this.state.resources[key]}</b>`;
       list.appendChild(li);
     }
+    this.#renderCards();
+  }
+
+  // Card collection from booster packs (Batch 6), grouped with ×counts.
+  #renderCards() {
+    const wrap = document.getElementById('backpack-cards');
+    wrap.innerHTML = '<h4>🎴 Cards</h4>';
+    const cards = this.state.ownedCards;
+    if (cards.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No cards yet — open packs in the Store!';
+      wrap.appendChild(empty);
+      return;
+    }
+    const counts = new Map(); // name -> { card, n } keeps first-seen order
+    for (const card of cards) {
+      const bucket = counts.get(card.name) ?? { card, n: 0 };
+      bucket.n += 1;
+      counts.set(card.name, bucket);
+    }
+    const ul = document.createElement('ul');
+    for (const { card, n } of counts.values()) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span>${cardIcon(card)} ${card.name}</span><b>×${n}</b>`;
+      ul.appendChild(li);
+    }
+    wrap.appendChild(ul);
   }
 }

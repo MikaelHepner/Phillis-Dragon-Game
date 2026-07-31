@@ -5,6 +5,8 @@
 // caretaking core (resources, per-dragon stats) independent of the scene so the
 // save system in Batch 11 can read/write it directly.
 
+import { PACK_COST, rollPack } from '../data/cards.js';
+
 // — Tunables copied from the 2D source (code wins over docs) —
 export const DECAY_INTERVAL_MS = 15000; // MainScene global stat-decay loop
 export const DECAY_HUNGER = 1; // hunger lost per tick
@@ -55,6 +57,7 @@ export class GameState extends Emitter {
     // 5) tops these up from trees/rocks. The 2D game starts these at 0.
     this.resources = { apples: 8, coins: 25, wood: 0, fish: 0, stone: 3 };
     this.ownedDragons = []; // [{ id, name, key, stats }]
+    this.ownedCards = []; // [{ name, type, key }] — 2D MainScene.ownedCards shape
     this.selectedId = null;
   }
 
@@ -86,6 +89,49 @@ export class GameState extends Emitter {
     if (this.resources[type] === undefined) return;
     this.resources[type] = Math.max(0, this.resources[type] + amount);
     this.emit('resources', this.resources);
+  }
+
+  // — Dragon Store (2D UIScene.buyDragon: one of each type) ————————
+  ownsType(typeId) {
+    return this.ownedDragons.some((d) => d.id === typeId);
+  }
+
+  /**
+   * Buy a dragon type from the store. Deducts coins and registers the dragon
+   * (which emits 'dragonAdded' — the scene layer spawns it in-world). Also
+   * emits 'dragonBought' for store-specific feedback. Returns the new entry,
+   * or null if unaffordable / already owned.
+   */
+  buyDragon(type) {
+    if (typeof type.cost !== 'number') return null;
+    if (this.ownsType(type.id)) return null;
+    if (this.resources.coins < type.cost) return null;
+    this.resources.coins -= type.cost;
+    this.emit('resources', this.resources);
+    const entry = this.addDragon({ id: type.id, name: type.name, key: type.key });
+    this.emit('dragonBought', entry);
+    return entry;
+  }
+
+  // — Pack Store (2D UIScene.openPack: 10 coins → 3 random cards) ————
+  /**
+   * Buy and open a booster pack. Deducts coins and returns the 3 rolled cards
+   * for the reveal screen — they are NOT in the collection yet (matches the
+   * 2D flow, where "COLLECT ALL" adds them). Returns null if unaffordable.
+   */
+  openPack() {
+    if (this.resources.coins < PACK_COST) return null;
+    this.resources.coins -= PACK_COST;
+    this.emit('resources', this.resources);
+    const cards = rollPack();
+    this.emit('packOpened', cards);
+    return cards;
+  }
+
+  /** Add revealed cards to the collection (the "COLLECT ALL" step). */
+  collectCards(cards) {
+    this.ownedCards.push(...cards);
+    this.emit('cards', this.ownedCards);
   }
 
   // — Caretaking interactions ——————————————————————————————————

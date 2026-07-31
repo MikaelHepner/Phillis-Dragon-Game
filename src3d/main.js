@@ -8,6 +8,7 @@ import { PlayerController } from './player/PlayerController.js';
 import { CompanionManager } from './companions/CompanionManager.js';
 import { GameState, DECAY_INTERVAL_MS, starterStats } from './state/GameState.js';
 import { Hud } from './ui/Hud.js';
+import { StoreUI } from './ui/StoreUI.js';
 import { HarvestManager } from './harvest/HarvestManager.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
@@ -43,6 +44,7 @@ const { colliders, bounds } = world;
 // — Game state: the single source of truth for resources + per-dragon stats —
 const state = new GameState();
 new Hud(state);
+new StoreUI(state); // dragon store + pack store overlays (Batch 6)
 
 // Registry of selectable dragons in the world: { id, dragon } keyed for
 // raycasting and for playing per-dragon feedback animations.
@@ -64,22 +66,27 @@ const playerEntry = state.addDragon({
 });
 register('phillis', playerDragon, playerEntry);
 
-// — Two test companions trailing the player —
+// — Companions: dragons bought in the store trail the player. (Batch 6
+// replaced the Batch-3 hard-coded test companions with real purchases.) —
 const companions = new CompanionManager({ colliders, bounds, groundY: GROUND_Y });
-const testCompanions = ['fire', 'water'];
-testCompanions.forEach((id, i) => {
-  const type = DRAGON_TYPES_BY_ID[id];
+
+// Any dragon added to the collection after boot (store purchase now, crafting
+// in Batch 7) spawns just behind the player and joins the follow chain.
+state.on('dragonAdded', (entry) => {
+  const type = DRAGON_TYPES_BY_ID[entry.id];
+  if (!type || entry.id === 'phillis') return;
   const dragon = createDragon(type);
-  // Spawn just behind the player so they fall into the follow chain.
+  const yaw = playerDragon.group.rotation.y;
   dragon.group.position.set(
-    WORLD_CENTER.x + (i - 0.5) * 40,
+    playerDragon.group.position.x - Math.sin(yaw) * 55,
     GROUND_Y,
-    WORLD_CENTER.z - 55 - i * 40
+    playerDragon.group.position.z - Math.cos(yaw) * 55
   );
+  dragon.group.rotation.y = yaw;
   scene.add(dragon.group);
   companions.add(dragon);
-  const entry = state.addDragon({ id, name: type.name, key: type.key });
-  register(id, dragon, entry);
+  register(entry.id, dragon, entry);
+  floatOnDragon(dragon, '✨');
 });
 
 // — Selection ring: a flat glowing ring under the currently selected dragon —
