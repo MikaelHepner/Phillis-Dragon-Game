@@ -78,6 +78,7 @@ export class BuildUI {
       'pack-panel',
       'craft-panel',
       'backpack-panel',
+      'fight-panel',
     ]) {
       document.getElementById(id)?.classList.remove('open');
     }

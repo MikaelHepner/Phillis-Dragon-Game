@@ -41,7 +41,7 @@ export class CraftingUI {
   toggle() {
     if (this.isOpen) return this.close();
     // One overlay at a time (same DOM-id pattern StoreUI uses for backpack).
-    for (const id of ['store-panel', 'pack-panel', 'backpack-panel']) {
+    for (const id of ['store-panel', 'pack-panel', 'backpack-panel', 'fight-panel']) {
       document.getElementById(id)?.classList.remove('open');
     }
     this.selected = null;

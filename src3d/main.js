@@ -26,6 +26,8 @@ import { ProjectileManager } from './combat/Projectiles.js';
 import { EnemyManager } from './combat/EnemyManager.js';
 import { TowerDefense } from './combat/TowerDefense.js';
 import { GameOverUI } from './ui/GameOverUI.js';
+import { BattleArena } from './battle/BattleArena.js';
+import { FightUI } from './ui/FightUI.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -45,7 +47,8 @@ scene.fog = new THREE.Fog(0x7ec8e3, 900, 2600);
 // Environment map so metallic / glass / crystal dragon skins have something
 // to reflect (matches the gallery's setup).
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environment = envTexture;
 
 const camera = new THREE.PerspectiveCamera(
   55,
@@ -151,16 +154,18 @@ function pickDragon(clientX, clientY) {
   return true;
 }
 
-// Tap routing, in priority order: placement mode consumes every click, then
-// dragon selection, then a black-dragon attack, then a placed structure
-// (upgrade menu), then a harvest node in range; otherwise the tap falls
-// through to click-to-move (which walks the player toward a distant node so
-// walk-into harvesting finishes).
+// Tap routing, in priority order: an active arena battle consumes every
+// click (its own raycast decides if you hit your fighter), then placement
+// mode, then dragon selection, then a black-dragon attack, then a placed
+// structure (upgrade menu), then a harvest node in range; otherwise the tap
+// falls through to click-to-move (which walks the player toward a distant
+// node so walk-into harvesting finishes).
 const player = new PlayerController(playerDragon, camera, canvas, {
   colliders,
   bounds,
   groundY: GROUND_Y,
   onClick: (x, y) =>
+    battle.handleClick(x, y) ||
     construction.handleClick(x, y) ||
     pickDragon(x, y) ||
     enemies.tryClickAttack(x, y, player.position) ||
@@ -174,7 +179,10 @@ state.select('phillis');
 const cameraRig = new CameraRig(camera, playerDragon.group, canvas);
 
 // — Passive stat decay (TECHNICAL_ARCHITECTURE.md §4: every 15,000ms) —
-const decayTimer = setInterval(() => state.tickDecay(), DECAY_INTERVAL_MS);
+// Frozen during arena battles, like the 2D scene.pause('MainScene').
+const decayTimer = setInterval(() => {
+  if (!battle.active) state.tickDecay();
+}, DECAY_INTERVAL_MS);
 window.addEventListener('beforeunload', () => clearInterval(decayTimer));
 
 // — Floating text feedback (caretaking emoji + harvest "+1 🍎" pops) —
@@ -183,6 +191,7 @@ const floaters = [];
 function floatText(getPos, text, base = 34, size = 26) {
   const el = document.createElement('div');
   el.textContent = text;
+  el.className = 'island-float'; // hidden while a battle covers the island
   el.style.cssText =
     `position:absolute;font-size:${size}px;font-weight:bold;pointer-events:none;` +
     'user-select:none;white-space:nowrap;transform:translate(-50%,-50%);transition:none;' +
@@ -217,6 +226,7 @@ function updateFloaters(dt) {
 const pins = [];
 function pinText(getPos, text, durationMs, base = 48) {
   const el = document.createElement('div');
+  el.className = 'island-float'; // hidden while a battle covers the island
   el.textContent = text;
   el.style.cssText =
     'position:absolute;font-size:26px;pointer-events:none;user-select:none;' +
@@ -266,6 +276,7 @@ state.on('cardGiven', ({ card, dragon, resource }) => {
   pinText(anchor, cardIcon(card), GIVE_ICON_MS);
   let ticks = 0;
   const timer = setInterval(() => {
+    if (battle.active) return; // island clocks freeze during arena battles
     state.addResource(resource, 1);
     floatText(anchor, RESOURCE_POPS[resource], 40, 20);
     if (++ticks >= GIVE_TICK_COUNT) clearInterval(timer);
@@ -328,6 +339,13 @@ const towers = new TowerDefense({
   floatText,
 });
 
+// — Battle Arena (Batch 10): separate fight scene + 2-step fighter select —
+// While battle.active the animate loop renders the arena instead of the
+// island and every island system (movement, enemies, decay) is frozen, the
+// 3D equivalent of the 2D scene.pause('MainScene') + launch('BattleScene').
+const battle = new BattleArena(state, { environment: envTexture });
+new FightUI(state, battle);
+
 // Game over freezes the run like the 2D physics.pause() + removeAllEvents():
 // the caretaking/production clocks stop and the animate loop skips gameplay
 // updates (rendering continues under the overlay).
@@ -348,6 +366,7 @@ window.__game = {
   enemies,
   towers,
   projectiles,
+  battle,
   camera,
 };
 
@@ -367,6 +386,14 @@ const clock = new THREE.Clock();
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
+
+  // Arena battles take over rendering completely; the island freezes
+  // underneath (2D: pause MainScene, launch BattleScene).
+  if (battle.active) {
+    battle.update(dt);
+    renderer.render(battle.scene, battle.camera);
+    return;
+  }
 
   world.update(time);
   if (!state.isGameOver) {

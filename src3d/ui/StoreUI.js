@@ -57,6 +57,7 @@ export class StoreUI {
     document.getElementById('craft-panel')?.classList.remove('open');
     document.getElementById('build-panel')?.classList.remove('open');
     document.getElementById('upgrade-panel')?.classList.remove('open');
+    document.getElementById('fight-panel')?.classList.remove('open');
   }
 
   // — Dragon Store ——————————————————————————————————————————————

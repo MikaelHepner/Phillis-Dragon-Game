@@ -679,6 +679,223 @@
       }
       #gameover-restart:hover { transform: scale(1.05); }
 
+      /* — Batch 10: Fighter Selection + Battle Arena — */
+
+      /* While a battle runs, the island HUD and its floating text hide. */
+      body.in-battle #top-left,
+      body.in-battle #top-right,
+      body.in-battle #dragon-panel,
+      body.in-battle #place-hint,
+      body.in-battle .island-float { display: none !important; }
+
+      .fight-tile .store-thumb { cursor: pointer; }
+      .fight-select { background: #c0392b; }
+
+      .team-slots {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        margin: 14px 0 4px;
+      }
+      .team-slot {
+        cursor: pointer;
+        font-family: inherit;
+        color: #5a3e2b;
+        width: 130px;
+        min-height: 150px;
+        background: #f6ead2;
+        border: 3px dashed #b09a7c;
+        border-radius: 14px;
+        padding: 8px 6px;
+        text-align: center;
+      }
+      .team-slot:hover { border-color: #1fb6c9; }
+      .team-slot .store-thumb { width: 78px; height: 78px; }
+      .team-plus {
+        font-size: 52px;
+        line-height: 120px;
+        color: #b09a7c;
+        font-weight: bold;
+      }
+      .team-start { font-size: 18px; background: #3cab4b; color: #fff; }
+      .team-start.disabled {
+        background: #9a9a9a;
+        cursor: default;
+        pointer-events: none;
+      }
+
+      /* Owned-dragon chooser (covers the fight panel while picking a slot) */
+      .team-chooser {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 251, 240, 0.98);
+        border-radius: 16px;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 16px;
+        box-sizing: border-box;
+        overflow-y: auto;
+      }
+      .team-chooser-title { font-size: 20px; font-weight: bold; }
+      .team-chooser-list {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+      }
+      .team-choice {
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: bold;
+        color: #5a3e2b;
+        width: 104px;
+        background: #f6ead2;
+        border: 3px solid #5a3e2b;
+        border-radius: 12px;
+        padding: 6px 4px;
+        text-align: center;
+      }
+      .team-choice:hover { border-color: #1fb6c9; }
+      .team-choice img { width: 64px; height: 64px; display: block; margin: 0 auto 2px; }
+
+      /* Battle HUD overlay (HP bars, names, help, return button) */
+      #battle-hud {
+        position: fixed;
+        inset: 0;
+        display: none;
+        pointer-events: none; /* clicks reach the canvas; buttons re-enable */
+        z-index: 8;
+        user-select: none;
+      }
+      #battle-hud.open { display: block; }
+      .battle-title {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: clamp(24px, 5vw, 40px);
+        font-weight: bold;
+        color: #fff;
+        letter-spacing: 3px;
+        text-shadow: 0 3px 0 #000, 0 0 18px rgba(255, 170, 60, 0.55);
+      }
+      .battle-side {
+        position: absolute;
+        top: 84px;
+        width: min(34vw, 280px);
+        background: rgba(20, 12, 40, 0.82);
+        border: 3px solid #d4af37;
+        border-radius: 14px;
+        padding: 10px 14px;
+        color: #fff;
+      }
+      #battle-player-side { left: 18px; }
+      #battle-opp-side { right: 18px; text-align: right; }
+      .battle-name {
+        font-size: 17px;
+        font-weight: bold;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #battle-player-side .battle-name { color: #7bff9e; }
+      #battle-opp-side .battle-name { color: #ff7b7b; }
+      .battle-hpbar {
+        height: 16px;
+        background: #333;
+        border: 2px solid #000;
+        border-radius: 9px;
+        overflow: hidden;
+      }
+      .battle-hpfill {
+        height: 100%;
+        width: 100%;
+        background: #00e050;
+        transition: width 0.25s ease;
+      }
+      .battle-hpfill.mid { background: #ffd800; }
+      .battle-hpfill.low { background: #ff3333; }
+      .battle-hptext { font-size: 13px; font-weight: bold; margin-top: 4px; }
+      .battle-team-dots { font-size: 15px; letter-spacing: 4px; color: #7bff9e; margin-top: 2px; }
+      .battle-vs {
+        position: absolute;
+        top: 96px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: clamp(28px, 6vw, 48px);
+        font-weight: bold;
+        font-style: italic;
+        color: #ff3333;
+        text-shadow: 0 3px 0 #000;
+      }
+      #battle-help {
+        position: absolute;
+        bottom: 74px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 18px;
+        font-weight: bold;
+        color: #ffe95e;
+        text-shadow: 0 2px 0 #000;
+        white-space: nowrap;
+      }
+      #battle-return {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        pointer-events: auto;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: bold;
+        color: #fff;
+        background: rgba(20, 12, 40, 0.85);
+        border: 3px solid #d4af37;
+        border-radius: 12px;
+        padding: 8px 18px;
+      }
+      #battle-return:hover { background: rgba(60, 36, 100, 0.9); }
+
+      /* Battle damage popups + big center banners */
+      .battle-float {
+        position: absolute;
+        font-size: 28px;
+        font-weight: bold;
+        color: #ff4444;
+        pointer-events: none;
+        user-select: none;
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+        text-shadow: 0 2px 0 #000;
+        z-index: 9;
+      }
+      .battle-banner {
+        position: fixed;
+        left: 50%;
+        top: 42%;
+        transform: translate(-50%, -50%);
+        z-index: 25;
+        font-size: clamp(40px, 10vw, 90px);
+        font-weight: bold;
+        letter-spacing: 3px;
+        text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+        pointer-events: none;
+        white-space: nowrap;
+        animation: battlebanner 2.2s ease forwards;
+      }
+      @keyframes battlebanner {
+        0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+        14%, 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+      }
+
       @media (max-width: 640px) {
         #dragon-panel { width: 56vw; }
         #top-left { max-width: 52vw; }
@@ -713,7 +930,26 @@
     <div class="overlay-panel" id="craft-panel"></div>
     <div class="overlay-panel" id="build-panel"></div>
     <div class="overlay-panel" id="upgrade-panel"></div>
+    <div class="overlay-panel" id="fight-panel"></div>
     <span class="hud-chip" id="place-hint"></span>
+
+    <div id="battle-hud">
+      <div class="battle-title">⚔️ BATTLE ARENA</div>
+      <div class="battle-side" id="battle-player-side">
+        <div class="battle-name" id="battle-player-name"></div>
+        <div class="battle-hpbar"><div class="battle-hpfill" id="battle-player-hp"></div></div>
+        <div class="battle-hptext" id="battle-player-hptext">100 / 100</div>
+        <div class="battle-team-dots" id="battle-team-dots"></div>
+      </div>
+      <div class="battle-vs">VS</div>
+      <div class="battle-side" id="battle-opp-side">
+        <div class="battle-name" id="battle-opp-name"></div>
+        <div class="battle-hpbar"><div class="battle-hpfill" id="battle-opp-hp"></div></div>
+        <div class="battle-hptext" id="battle-opp-hptext">100 / 100</div>
+      </div>
+      <div id="battle-help">Click YOUR dragon to attack!</div>
+      <button id="battle-return">← Return to Island</button>
+    </div>
 
     <div id="dragon-panel" class="hidden"></div>
 

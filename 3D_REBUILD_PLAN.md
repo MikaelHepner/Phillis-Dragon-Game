@@ -214,5 +214,5 @@ verify the "Done when" checklist in the browser, then move to the next batch.
 - [x] Batch 7 — Card Crafting Center
 - [x] Batch 8 — Construction & Castle Walls
 - [x] Batch 9 — Overworld Combat
-- [ ] Batch 10 — Battle Arena
+- [x] Batch 10 — Battle Arena
 - [ ] Batch 11 — Save System & Polish
