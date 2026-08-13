@@ -12,7 +12,14 @@ import {
   CRAFT_DRAGON_TYPES,
   GIVEABLE_CARD_RESOURCES,
 } from '../data/cards.js';
-import { BUILDINGS_BY_ID, UPGRADES_BY_ID, PRODUCTION } from '../data/structures.js';
+import {
+  BUILDINGS_BY_ID,
+  UPGRADES_BY_ID,
+  PRODUCTION,
+  BARBED_WIRE,
+  GRABEN,
+  DRAGON_ARMOR,
+} from '../data/structures.js';
 
 // — Tunables copied from the 2D source (code wins over docs) —
 export const DECAY_INTERVAL_MS = 15000; // MainScene global stat-decay loop
@@ -37,6 +44,17 @@ export const STAT_MAX = 100;
 export const ENEMY_ATTACK_DAMAGE = 10; // black dragon fireball hit
 export const PLAYER_ATTACK_DAMAGE = 35; // player click-attack on an enemy
 export const ENEMY_LOOT_COINS = 3; // paid out per defeated black dragon
+
+/**
+ * What a hit actually costs a dragon: forged armor (Construction Hub, 6 stone)
+ * halves it. One formula, exported, because two places need the number — the HP
+ * subtraction below and the "-5 HP" popup the attacker floats over its target —
+ * and they must never disagree. A missing dragon takes the hit unreduced.
+ */
+export function armoredDamage(dragon, amount) {
+  if (!dragon?.armored) return amount;
+  return Math.round(amount * DRAGON_ARMOR.damageMultiplier);
+}
 
 // Fresh stat blocks matching the exact 2D initial values.
 export function starterStats() {
@@ -82,6 +100,12 @@ export class GameState extends Emitter {
     // [{ id, type: 'house'|'castle', x, z, upgradeType: null|'tower'|'mine'|'blacksmith' }]
     this.structures = [];
     this.structureCount = 0;
+    // Outer defences. Deliberately NOT in `structures`: they hang off the wall
+    // ring rather than sitting in it, so they must not widen its bounding box
+    // (#rebuildWalls) or answer the upgrade menu's click routing.
+    this.barbedWires = []; // [{ id, x, z }] — x/z assigned by ConstructionManager
+    this.wireCount = 0;
+    this.hasGraben = false;
     this.isGameOver = false; // set once when Phillis faints (Batch 9)
   }
 
@@ -331,6 +355,85 @@ export class GameState extends Emitter {
     return s;
   }
 
+  // — Outer defences ————————————————————————————————————————————
+  // Both are instant buys with no ghost: the ConstructionManager has already
+  // checked there's a wall ring with room, and passes the derived slot in.
+  // Cost is validated here so no call path can drive resources negative.
+
+  /** Add one barbed-wire segment at a front-edge slot. Returns the entry or null. */
+  buildBarbedWire(x, z) {
+    if (!this.canAfford(BARBED_WIRE.cost)) return null;
+    this.#spend(BARBED_WIRE.cost);
+    const entry = { id: `wire_${++this.wireCount}`, x, z };
+    this.barbedWires.push(entry);
+    this.emit('barbedWireAdded', entry);
+    return entry;
+  }
+
+  /**
+   * Retire a segment and hand its materials back — used when a rebuilt wall
+   * ring has fewer front slots than the player owns segments, so nothing is
+   * ever silently destroyed.
+   */
+  refundBarbedWire(entry) {
+    const i = this.barbedWires.indexOf(entry);
+    if (i < 0) return false;
+    this.barbedWires.splice(i, 1);
+    for (const [res, n] of Object.entries(BARBED_WIRE.cost)) this.resources[res] += n;
+    this.emit('resources', this.resources);
+    this.emit('barbedWireRemoved', entry);
+    return true;
+  }
+
+  /** Dig the trench ring. One-shot: returns false if already dug or unaffordable. */
+  digGraben() {
+    if (this.hasGraben || !this.canAfford(GRABEN.cost)) return false;
+    this.#spend(GRABEN.cost);
+    this.hasGraben = true;
+    this.emit('grabenDug');
+    return true;
+  }
+
+  /**
+   * Restore saved defences without charging for them (SaveManager). Wire
+   * entries come back position-less on purpose: the wall ring is what decides
+   * where they sit, so ConstructionManager re-seats them off the restored ring
+   * when it handles 'defencesRestored'.
+   */
+  restoreDefences({ barbedWires = 0, wireCount, hasGraben = false } = {}) {
+    this.hasGraben = !!hasGraben;
+    this.barbedWires.length = 0;
+    this.wireCount = wireCount ?? 0;
+    for (let i = 0; i < barbedWires; i++) {
+      this.barbedWires.push({ id: `wire_r${i + 1}`, x: 0, z: 0 });
+    }
+    this.emit('defencesRestored');
+  }
+
+  // — Dragon armor (Construction Hub → FORGE, 6 stone) ————————————
+  // Armor lives on the dragon, not the island: one per dragon, permanent, and
+  // honoured centrally by damageDragon() so no attacker has to know about it.
+
+  /** True while some owned dragon still has no armor — the Hub row's gate. */
+  hasUnarmoredDragon() {
+    return this.ownedDragons.some((d) => !d.armored);
+  }
+
+  /**
+   * Forge armor onto one dragon. Emits 'armorEquipped' — the scene layer bolts
+   * the plate on. An already-armored dragon is rejected rather than charged
+   * twice. Returns the dragon, or null (unknown / already armored /
+   * unaffordable).
+   */
+  equipArmor(dragonId) {
+    const d = this.getDragon(dragonId);
+    if (!d || d.armored || !this.canAfford(DRAGON_ARMOR.cost)) return null;
+    this.#spend(DRAGON_ARMOR.cost);
+    d.armored = true;
+    this.emit('armorEquipped', d);
+    return d;
+  }
+
   /**
    * Passive production tick (call every PRODUCTION_INTERVAL_MS): every mine
    * yields +1 stone, every blacksmith +1 wood, credited straight into the
@@ -388,14 +491,16 @@ export class GameState extends Emitter {
 
   // — Overworld combat (Batch 9) ————————————————————————————————
   /**
-   * Apply enemy damage to an owned dragon (2D enemyAttack: -10 HP). If the
+   * Apply enemy damage to an owned dragon (2D enemyAttack: -10 HP). Forged
+   * armor is applied HERE rather than at the call sites, so every damage source
+   * — fireballs now, anything added later — is halved exactly once. If the
    * primary dragon — ownedDragons[0], Phillis — reaches 0 HP, the run is over:
    * emits 'gameOver' once (2D triggerGameOver). Returns the dragon, or null.
    */
   damageDragon(id, amount) {
     const d = this.getDragon(id);
     if (!d || this.isGameOver) return null;
-    d.stats.hp = Math.max(0, d.stats.hp - amount);
+    d.stats.hp = Math.max(0, d.stats.hp - armoredDamage(d, amount));
     this.emit('stats', d);
     this.emit('damaged', d);
     if (this.ownedDragons[0] === d && d.stats.hp <= 0) {

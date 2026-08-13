@@ -70,6 +70,9 @@ const worldSeed = save?.worldSeed ?? randomWorldSeed();
 
 const world = createWorld(scene, worldSeed);
 const { colliders, bounds } = world;
+// Contact-damage zones, shared the same way `colliders` is: the
+// ConstructionManager fills it (barbed wire) and the EnemyManager reads it.
+const hazards = [];
 
 // Sun/sky/water animation + the player-following shadow frustum.
 const dayNight = new DayNightCycle({
@@ -335,6 +338,15 @@ state.on('dragonAdded', () => {
 });
 state.on('packOpened', () => audio.sfx('pack'));
 state.on('damaged', () => audio.sfx('hit'));
+// Forged armor: bolt the plate onto the dragon in-world. A loaded save replays
+// this event per armored dragon, so restored dragons come back wearing theirs —
+// silently, like every other bulk-restored change.
+state.on('armorEquipped', (d) => {
+  const dragon = reactTo(d.id);
+  dragon?.setArmor(true);
+  floatOnDragon(dragon, '🛡️');
+  if (!restoring) audio.sfx('upgrade');
+});
 
 // — Give-card-to-dragon production (Batch 7, 2D handle*Generation timers):
 // the card's icon bobs over the dragon for 60s while it produces +1 of the
@@ -372,17 +384,32 @@ const construction = new ConstructionManager({
   camera,
   state,
   colliders,
+  hazards,
   bounds,
   world,
   harvest,
-  getDragonPositions: () => selectables.map((s) => s.dragon.group.position),
+  // A dragon asleep inside a building shouldn't veto a nearby build spot — the
+  // building it's in already blocks placement through its own collider.
+  getDragonPositions: () =>
+    selectables
+      .filter((s) => !companions.sheltered.has(s.dragon))
+      .map((s) => s.dragon.group.position),
   floatText,
 });
 new BuildUI(state, construction);
+
+// Where companions can get to when they turn in for the night.
+const structureRadius = (id) => construction.radiusFor(id);
 state.on('structureAdded', () => {
   if (!restoring) audio.sfx('build');
 });
 state.on('structureUpgraded', () => audio.sfx('upgrade'));
+state.on('barbedWireAdded', () => {
+  if (!restoring) audio.sfx('build');
+});
+state.on('grabenDug', () => {
+  if (!restoring) audio.sfx('build');
+});
 
 // Passive mine/blacksmith yield: one global 5s loop over all structures,
 // exactly like the 2D house-yield timer (TECHNICAL_ARCHITECTURE.md §4).
@@ -401,10 +428,13 @@ const enemies = new EnemyManager({
   camera,
   state,
   colliders,
+  hazards,
   bounds,
   groundY: GROUND_Y,
   projectiles,
-  getFriendlies: () => selectables,
+  // Dragons sleeping indoors are safe: black dragons can't see them, so they
+  // neither draw aggro nor take hits from an orb already in flight.
+  getFriendlies: () => selectables.filter((s) => !companions.sheltered.has(s.dragon)),
   playerDragon,
   floatText,
 });
@@ -550,6 +580,8 @@ window.__game = {
   blackRoom,
   worldSeed,
   saveNow,
+  colliders,
+  hazards,
 };
 
 window.addEventListener('resize', () => {
@@ -587,7 +619,11 @@ function animate() {
   dayNight.update(dt, player.position);
   if (!state.isGameOver) {
     player.update(dt);
-    companions.update(dt, player.position);
+    companions.update(dt, player.position, {
+      night: dayNight.isNight,
+      structures: state.structures,
+      radiusFor: structureRadius,
+    });
     harvest.update(dt, player.position);
     enemies.update(dt, player.position);
     towers.update(dt);
@@ -595,10 +631,16 @@ function animate() {
   }
   construction.update(dt);
 
-  // Keep the selection ring pinned under the selected dragon.
+  // Keep the selection ring pinned under the selected dragon — and off the
+  // ground entirely while that dragon is asleep inside a building, so the ring
+  // doesn't sit glowing under a house with nothing standing on it.
   if (selectedDragon) {
-    selectionRing.position.x = selectedDragon.group.position.x;
-    selectionRing.position.z = selectedDragon.group.position.z;
+    const asleep = companions.sheltered.has(selectedDragon);
+    selectionRing.visible = !asleep;
+    if (!asleep) {
+      selectionRing.position.x = selectedDragon.group.position.x;
+      selectionRing.position.z = selectedDragon.group.position.z;
+    }
   }
 
   updateFloaters(dt);

@@ -27,6 +27,9 @@ const MAT = {
     emissiveIntensity: 0.9,
   }),
   gold: new THREE.MeshLambertMaterial({ color: 0xd4af37, flatShading: true }),
+  barbedIron: new THREE.MeshLambertMaterial({ color: 0x5a5a62, flatShading: true }),
+  earth: new THREE.MeshLambertMaterial({ color: 0x6b4f32, flatShading: true }),
+  pitDark: new THREE.MeshLambertMaterial({ color: 0x241a10, flatShading: true }),
 };
 
 function box(w, h, d, mat, x = 0, y = 0, z = 0) {
@@ -206,6 +209,87 @@ export function createWallTile() {
   // can't slip between tiles, while the 2–3 tile gate stays walkable.
   g.userData.collideRadius = 21;
   g.userData.height = 30;
+  return g;
+}
+
+// — Barbed wire: two timber posts with a spiked coil strung between them.
+// Baked to one shared geometry for the same reason the wall tile is: the front
+// line can run a dozen segments and each is otherwise ~14 little meshes.
+// Slot 0 is timber (posts), slot 1 is dark iron (coil + barbs).
+const BARBED_WIRE_GEO = (() => {
+  const parts = { timber: [], iron: [] };
+  // Posts at either end of a 40-unit slot.
+  for (const x of [-16, 16]) {
+    parts.timber.push(new THREE.CylinderGeometry(1.8, 2.2, 24, 6).translate(x, 12, 0));
+  }
+  // Three strands running the length of the span (along x, the wall's run).
+  for (const y of [7, 13, 19]) {
+    const strand = new THREE.CylinderGeometry(0.7, 0.7, 34, 5);
+    strand.rotateZ(Math.PI / 2); // stand the cylinder on its side, along x
+    parts.iron.push(strand.translate(0, y, 0));
+  }
+  // Barbs: crossed spikes clamped onto each strand at regular intervals.
+  for (const y of [7, 13, 19]) {
+    for (let i = -2; i <= 2; i++) {
+      for (const tilt of [0.7, -0.7]) {
+        const barb = new THREE.BoxGeometry(0.9, 5.5, 0.9);
+        barb.rotateZ(tilt);
+        parts.iron.push(barb.translate(i * 7, y, 0));
+      }
+    }
+  }
+  const timber = mergeGeometries(parts.timber);
+  const iron = mergeGeometries(parts.iron);
+  const merged = mergeGeometries([timber, iron], true); // slot 0 posts, 1 wire
+  timber.dispose();
+  iron.dispose();
+  return merged;
+})();
+
+export function createBarbedWire() {
+  const g = new THREE.Group();
+  const wire = new THREE.Mesh(BARBED_WIRE_GEO, [MAT.timber, MAT.barbedIron]);
+  wire.castShadow = true;
+  wire.receiveShadow = true;
+  g.add(wire);
+  g.userData.collideRadius = 16;
+  g.userData.height = 24;
+  return g;
+}
+
+// — Graben tile: a 40×40 stretch of trench — a dark sunken floor ringed by
+// earth berms thrown up from the digging.
+//
+// The island's ground is one opaque plane, so a pit modelled *below* y=0 is
+// simply invisible — the floor instead sits a hair above the grass and reads
+// as depth through its darkness, while the berms carry the actual relief.
+const GRABEN_TILE_GEO = (() => {
+  // Full-width floor so neighbouring tiles fuse into one unbroken dark channel.
+  // Cleared clear of the ground plane, which is noisy enough to poke through a
+  // floor laid flush with it.
+  const floor = new THREE.BoxGeometry(40, 8, 40).translate(0, -2.8, 0); // top at y≈1.2
+  // Low earth rims, kept short so the dark channel still dominates from the
+  // shallow third-person camera angle rather than being walled off by spoil.
+  const berms = mergeGeometries([
+    new THREE.BoxGeometry(40, 6, 5).translate(0, 3, -17.5),
+    new THREE.BoxGeometry(40, 6, 5).translate(0, 3, 17.5),
+    new THREE.BoxGeometry(5, 6, 30).translate(-17.5, 3, 0),
+    new THREE.BoxGeometry(5, 6, 30).translate(17.5, 3, 0),
+  ]);
+  const merged = mergeGeometries([floor, berms], true); // slot 0 pit, 1 berm
+  floor.dispose();
+  berms.dispose();
+  return merged;
+})();
+
+export function createGrabenTile() {
+  const g = new THREE.Group();
+  const tile = new THREE.Mesh(GRABEN_TILE_GEO, [MAT.pitDark, MAT.earth]);
+  tile.castShadow = true;
+  tile.receiveShadow = true;
+  g.add(tile);
+  g.userData.collideRadius = 21; // same as a wall tile — neighbours overlap
+  g.userData.height = 8;
   return g;
 }
 

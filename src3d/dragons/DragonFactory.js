@@ -246,6 +246,52 @@ function buildAccessories(config, parts, rig, headGroup) {
   return null;
 }
 
+// Forged armor (Construction Hub, 6 stone): a steel barding plate over the
+// dragon's back plus a neck collar and two shoulder studs. It reuses the body
+// sphere's own radius and scale, so the one plate fits every dragon type —
+// they all share this body geometry and differ only by `group.scale`. A partial
+// sphere (top cap) rather than a full shell, so the dragon's own colours still
+// show from the sides and belly.
+function buildArmor(parts, rig) {
+  const group = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({
+    color: 0x9aa3ad,
+    metalness: 0.85,
+    roughness: 0.35,
+    flatShading: true,
+    side: THREE.DoubleSide, // the cap is a shell: its underside is visible too
+  });
+
+  // Barding: the body sphere again, a hair larger and cut off below the
+  // shoulders, so it sits ON the body at any type's scale with no fitting.
+  const plate = new THREE.Mesh(
+    new THREE.SphereGeometry(6.3, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42),
+    steel
+  );
+  plate.scale.copy(parts.body.scale);
+  plate.position.copy(parts.body.position);
+  plate.castShadow = true;
+  group.add(plate);
+
+  // Collar, tilted to follow the neck line up toward the head.
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(4.1, 0.75, 8, 18), steel);
+  collar.position.set(0, 13.4, 5.6);
+  collar.rotation.x = 0.95;
+  collar.castShadow = true;
+  group.add(collar);
+
+  // Shoulder studs, just inboard of the wing pivots.
+  for (const side of [-1, 1]) {
+    const stud = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 6), steel);
+    stud.position.set(side * 4.4, 13.6, 1.2);
+    stud.scale.set(1, 0.7, 1);
+    group.add(stud);
+  }
+
+  rig.add(group);
+  return group;
+}
+
 class Dragon {
   constructor(config) {
     this.config = config;
@@ -416,6 +462,18 @@ class Dragon {
   setAnimation(name) {
     if (!['idle', 'walk', 'fly'].includes(name)) return;
     this.anim = name;
+  }
+
+  /**
+   * Show or hide the forged armor plate. Built on first use and then only
+   * toggled. It hangs off the rig rather than the body mesh, so it inherits the
+   * idle bob, walk bounce and hurt shake without update() knowing about it —
+   * and because this.materials was collected in the constructor, before the
+   * plate existed, the red hurt flash leaves steel alone.
+   */
+  setArmor(on) {
+    if (on && !this.parts.armor) this.parts.armor = buildArmor(this.parts, this.rig);
+    if (this.parts.armor) this.parts.armor.visible = !!on;
   }
 
   /** Trigger a one-shot: 'attack' | 'hurt'. Returns to the base loop when done. */

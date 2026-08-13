@@ -623,6 +623,20 @@
         pointer-events: none;
       }
 
+      /* Armor picker (Construction Hub → FORGE): reuses the Crafting Center's
+         dragon tiles, with an inert state for dragons already wearing plate. */
+      .craft-dragon.armored {
+        opacity: 0.6;
+        cursor: default;
+        pointer-events: none;
+        border-color: #9aa3ad;
+      }
+      .craft-dragon-badge {
+        font-size: 10px;
+        font-weight: bold;
+        color: #6b7a86;
+      }
+
       .upgrade-status { text-align: center; font-size: 16px; padding: 6px 0 12px; }
       .upgrade-status .status-active { font-weight: bold; color: #1e7a2e; }
       .upgrade-status .status-flavor { font-size: 14px; opacity: 0.75; }

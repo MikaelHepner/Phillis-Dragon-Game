@@ -1,4 +1,14 @@
-import { BUILDINGS, UPGRADES, UPGRADES_BY_ID, structureLabel } from '../data/structures.js';
+import {
+  BUILDABLES,
+  UPGRADES,
+  UPGRADES_BY_ID,
+  GRABEN,
+  BARBED_WIRE,
+  DRAGON_ARMOR,
+  structureLabel,
+} from '../data/structures.js';
+import { DRAGON_TYPES_BY_ID } from '../data/dragonTypes.js';
+import { makeDragonThumbnails } from './thumbnails.js';
 
 // Construction Hub + upgrade menu overlays (GAME_DESIGN.md §9), HTML/CSS like
 // the rest of the UI. Pure view over GameState; placement itself is handed to
@@ -22,6 +32,8 @@ export class BuildUI {
     this.state = state;
     this.construction = construction;
     this.upgradeTarget = null; // structure entry the upgrade panel is showing
+    this.armorPicker = false; // true while the Hub shows the armor dragon list
+    this.thumbs = new Map(); // typeId -> dataURL, grown lazily (like CraftingUI)
 
     this.buildBtn = document.getElementById('build-btn');
     this.buildPanel = document.getElementById('build-panel');
@@ -38,9 +50,14 @@ export class BuildUI {
       }
     };
 
-    // Keep costs/buttons truthful while panels are open.
+    // Keep costs/buttons truthful while panels are open. A mine ticking while
+    // the armor picker is up must re-render the PICKER, not snap back to the
+    // Hub and lose the player's place.
     state.on('resources', () => {
-      if (this.buildPanel.classList.contains('open')) this.#renderHub();
+      if (this.buildPanel.classList.contains('open')) {
+        if (this.armorPicker) this.#renderArmorPicker();
+        else this.#renderHub();
+      }
       if (this.upgradePanel.classList.contains('open')) this.#renderUpgrade();
     });
     state.on('structureUpgraded', (s) => {
@@ -71,6 +88,7 @@ export class BuildUI {
   }
 
   closeAll() {
+    this.armorPicker = false;
     for (const id of [
       'build-panel',
       'upgrade-panel',
@@ -86,6 +104,7 @@ export class BuildUI {
 
   // — Construction Hub ————————————————————————————————————————————
   #renderHub() {
+    this.armorPicker = false;
     this.buildPanel.innerHTML = `
       <div class="panel-head">
         <h3>🏗️ Construction Hub</h3>
@@ -98,8 +117,9 @@ export class BuildUI {
       .addEventListener('click', () => this.closeAll());
 
     const rows = this.buildPanel.querySelector('#build-rows');
-    for (const def of BUILDINGS) {
-      const affordable = this.state.canAfford(def.cost);
+    for (const def of BUILDABLES) {
+      const check = this.#check(def);
+      const label = def.equip ? 'FORGE' : def.id === GRABEN.id ? 'DIG' : 'BUILD';
       const row = document.createElement('div');
       row.className = 'build-row';
       row.innerHTML = `
@@ -107,18 +127,121 @@ export class BuildUI {
         <div class="build-info">
           <div class="build-name">${def.name}</div>
           <div class="build-cost">${costChips(this.state, def.cost)}</div>
-          <div class="build-desc">${def.desc}</div>
+          <div class="build-desc">${check.reason ?? def.desc}</div>
         </div>
-        <button class="panel-btn build-go ${affordable ? '' : 'disabled'}">BUILD</button>
+        <button class="panel-btn build-go ${check.ok ? '' : 'disabled'}">${label}</button>
       `;
-      if (affordable) {
+      if (check.ok) {
         row.querySelector('.build-go').addEventListener('click', () => {
-          this.closeAll();
-          this.construction.beginPlacement(def);
+          // Armor needs a dragon, not a spot: the Hub becomes a picker.
+          if (def.equip) {
+            this.#renderArmorPicker();
+            return;
+          }
+          if (!def.instant) {
+            this.closeAll();
+            this.construction.beginPlacement(def);
+            return;
+          }
+          // Instant builds keep the Hub open so a row can be bought repeatedly;
+          // the 'resources' listener above re-renders it after each purchase.
+          if (def.id === GRABEN.id) this.construction.digGraben();
+          else this.construction.buyBarbedWire();
+          this.#renderHub();
         });
       }
       rows.appendChild(row);
     }
+  }
+
+  // Can this row be used, and if not, why? The outer defences derive their
+  // position from the wall ring, so the manager — not the cost alone — decides,
+  // and says why when it says no. Armor additionally needs a bare dragon to put
+  // it on. Ghost-placed buildings only need the cost.
+  #check(def) {
+    if (def.id === GRABEN.id) return this.construction.canDigGraben();
+    if (def.id === BARBED_WIRE.id) return this.construction.canBuyBarbedWire();
+    if (def.equip && !this.state.hasUnarmoredDragon()) {
+      return { ok: false, reason: 'Every one of your dragons is already armored.' };
+    }
+    return { ok: this.state.canAfford(def.cost), reason: null };
+  }
+
+  // — Armor picker: the Hub's own body, swapped in place ————————————
+  // Forging needs a target rather than a spot, so the panel turns into a dragon
+  // list instead of entering placement mode. Nothing is charged until a dragon
+  // is clicked, so ← Back costs the player nothing.
+  #renderArmorPicker() {
+    this.armorPicker = true;
+    this.buildPanel.innerHTML = `
+      <div class="panel-head">
+        <h3>${DRAGON_ARMOR.icon} Equip ${DRAGON_ARMOR.name}</h3>
+        <button class="panel-close" id="build-close">✕</button>
+      </div>
+      <div class="craft-sub">
+        Pick the dragon to armor — it takes half damage from then on. Costs
+        ${costChips(this.state, DRAGON_ARMOR.cost)}
+      </div>
+      <div class="craft-dragons" id="armor-dragons"></div>
+      <div class="craft-actions"><button class="panel-btn" id="armor-back">← Back</button></div>
+    `;
+    this.buildPanel
+      .querySelector('#build-close')
+      .addEventListener('click', () => this.closeAll());
+    this.buildPanel
+      .querySelector('#armor-back')
+      .addEventListener('click', () => this.#renderHub());
+
+    this.#ensureThumbs();
+    const wrap = this.buildPanel.querySelector('#armor-dragons');
+    for (const d of this.state.ownedDragons) {
+      const url = this.thumbs.get(d.typeId);
+      const tile = document.createElement('button');
+      tile.className = `craft-dragon ${d.armored ? 'armored' : ''}`;
+      tile.innerHTML = `
+        ${url ? `<img class="craft-dragon-thumb" src="${url}" alt="">` : '<div class="craft-dragon-thumb">🐉</div>'}
+        <div class="craft-dragon-name">${d.name}</div>
+        ${d.armored ? '<div class="craft-dragon-badge">🛡️ Armored</div>' : ''}
+      `;
+      if (!d.armored) tile.addEventListener('click', () => this.#forgeArmor(d));
+      wrap.appendChild(tile);
+    }
+  }
+
+  #forgeArmor(entry) {
+    const armored = this.state.equipArmor(entry.id);
+    // Null means the stone ran out between render and click — say so instead of
+    // closing on a purchase that never happened.
+    if (!armored) {
+      this.#renderArmorPicker();
+      this.#toast('Not enough stone to forge that armor!', false);
+      return;
+    }
+    this.closeAll();
+    this.#toast(`🛡️ ${armored.name} is armored — half damage from now on!`, true);
+  }
+
+  // Snapshot any dragon type not rendered yet (the same lazy cache CraftingUI
+  // keeps, so opening the picker never re-renders thumbnails it already has).
+  #ensureThumbs() {
+    const missing = new Map();
+    for (const d of this.state.ownedDragons) {
+      const type = DRAGON_TYPES_BY_ID[d.typeId];
+      if (type && !this.thumbs.has(d.typeId)) missing.set(d.typeId, type);
+    }
+    if (missing.size === 0) return;
+    makeDragonThumbnails([...missing.values()]).forEach((url, id) =>
+      this.thumbs.set(id, url)
+    );
+  }
+
+  #toast(message, good) {
+    document.querySelectorAll('.store-toast').forEach((t) => t.remove());
+    const el = document.createElement('div');
+    el.className = `store-toast ${good ? 'good' : 'bad'}`;
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2000);
   }
 
   // — Upgrade menu / status card ————————————————————————————————

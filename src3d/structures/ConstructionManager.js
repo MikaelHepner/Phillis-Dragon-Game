@@ -2,9 +2,17 @@ import * as THREE from 'three';
 import {
   createStructureMesh,
   createWallTile,
+  createBarbedWire,
+  createGrabenTile,
   createLabelSprite,
 } from './StructureFactory.js';
-import { WALL, structureLabel, UPGRADES_BY_ID } from '../data/structures.js';
+import {
+  WALL,
+  BARBED_WIRE,
+  GRABEN,
+  structureLabel,
+  UPGRADES_BY_ID,
+} from '../data/structures.js';
 
 // Construction (Batch 8): ghost-mesh placement mode, structure meshes in the
 // world, and the defensive wall ring — the algorithm is a "must keep" system
@@ -44,17 +52,19 @@ export class ConstructionManager {
    * @param {THREE.Camera} opts.camera
    * @param {GameState} opts.state
    * @param {Array} opts.colliders  shared { x, z, radius } list (world + movers)
+   * @param {Array} opts.hazards    shared contact-damage list, read by EnemyManager
    * @param {object} opts.bounds    { size, margin }
    * @param {object} opts.world     createWorld() handles ({ trees, rocks })
    * @param {HarvestManager} opts.harvest  to retire nodes walls destroy
    * @param {() => THREE.Vector3[]} opts.getDragonPositions  all friendly dragons
    * @param {Function} opts.floatText  main.js floating-text helper
    */
-  constructor({ scene, camera, state, colliders, bounds, world, harvest, getDragonPositions, floatText }) {
+  constructor({ scene, camera, state, colliders, hazards, bounds, world, harvest, getDragonPositions, floatText }) {
     this.scene = scene;
     this.camera = camera;
     this.state = state;
     this.colliders = colliders;
+    this.hazards = hazards ?? [];
     this.bounds = bounds;
     this.world = world;
     this.harvest = harvest;
@@ -62,7 +72,11 @@ export class ConstructionManager {
     this.floatText = floatText;
 
     this.records = new Map(); // structure id -> { entry, group, collider, anchor }
-    this.wallTiles = []; // { group, collider, delaySec, growT, grown }
+    this.wallTiles = []; // { group, collider }
+    this.grabenTiles = []; // { group, collider }
+    this.wireRecords = new Map(); // wire id -> { entry, group, collider, hazard }
+    this.wallRing = null; // { left, right, top, bottom, midX } — outer defences hang off this
+    this.growing = []; // staggered scale-in queue shared by walls, graben, wire
     this.tweens = []; // { group, fromScale(Vector3), toScale, t, dur, onDone }
 
     // Placement mode state.
@@ -91,6 +105,14 @@ export class ConstructionManager {
 
     state.on('structureAdded', (s) => this.#spawnStructure(s));
     state.on('structureUpgraded', (s) => this.#applyUpgrade(s));
+    state.on('barbedWireAdded', (w) => this.#spawnBarbedWire(w));
+    state.on('barbedWireRemoved', (w) => this.#despawnBarbedWire(w));
+    state.on('grabenDug', () => this.#rebuildGraben());
+    // A restored save has already rebuilt the wall ring by the time this fires.
+    state.on('defencesRestored', () => {
+      this.#rebuildGraben();
+      this.#relineBarbedWire();
+    });
   }
 
   // — Placement mode ————————————————————————————————————————————
@@ -200,6 +222,15 @@ export class ConstructionManager {
     return this.records.get(structureId)?.anchor ?? null;
   }
 
+  /**
+   * Live collide radius of a placed structure — it changes with upgrades, which
+   * swap in a different model. The night-shelter code needs it to know how close
+   * a dragon can actually get to a building's centre.
+   */
+  radiusFor(structureId) {
+    return this.records.get(structureId)?.collider.radius ?? null;
+  }
+
   // — Structure meshes ———————————————————————————————————————————
   #buildGroupFor(s) {
     // An upgraded structure shows its class model — the 3D reading of the 2D
@@ -265,13 +296,7 @@ export class ConstructionManager {
   // — Defensive wall ring (2D buildWallAroundBuildings, verbatim port) ————
   #rebuildWalls() {
     // "Clear existing walls first to handle expansion/rebuilding."
-    for (const tile of this.wallTiles) {
-      this.scene.remove(tile.group);
-      if (tile.collider) {
-        const i = this.colliders.indexOf(tile.collider);
-        if (i >= 0) this.colliders.splice(i, 1);
-      }
-    }
+    for (const tile of this.wallTiles) this.#removeTile(tile);
     this.wallTiles = [];
 
     if (this.state.structures.length === 0) return;
@@ -293,6 +318,10 @@ export class ConstructionManager {
     const top = minZ - WALL.padding; // 2D "top" (min y) = north (min z)
     const bottom = maxZ + WALL.padding;
     const midX = (left + right) / 2;
+    // Cached for the outer defences, which are positioned relative to the ring
+    // rather than placed by hand. "Front" is the +z edge — the side the gate
+    // gap sits on, and the side the castle model's own gate faces.
+    this.wallRing = { left, right, top, bottom, midX };
     const positions = [];
 
     // Top edge: left to right.
@@ -312,6 +341,10 @@ export class ConstructionManager {
 
     const banner = new THREE.Vector3(midX, 30, top - 30);
     this.floatText(() => banner, '🛡️ Defensive Walls Erected!', 20);
+
+    // The ring moved, so everything hanging off it has to follow.
+    this.#rebuildGraben();
+    this.#relineBarbedWire();
   }
 
   #spawnWallTile({ x, z }, delayMs) {
@@ -322,9 +355,205 @@ export class ConstructionManager {
 
     const group = createWallTile();
     group.position.set(x, 0, z);
-    group.scale.setScalar(0.001); // grows in after its stagger delay
     this.scene.add(group);
-    this.wallTiles.push({ group, collider: null, delaySec: delayMs / 1000, growT: 0 });
+    const tile = { group, collider: null };
+    this.wallTiles.push(tile);
+    // Collision arms once grown, like the 2D refreshBody-on-complete.
+    this.#grow(group, delayMs, WALL.growSec, () => {
+      tile.collider = { x, z, radius: group.userData.collideRadius };
+      this.colliders.push(tile.collider);
+    });
+  }
+
+  // — Graben: an impassable trench ring one tile outside the walls ————————
+  // One-shot purchase, but the tiles themselves are rebuilt from the ring
+  // geometry whenever the walls move — same reasoning as the walls not saving
+  // their tile positions: a loaded island matches a live one exactly.
+
+  /** Why the Hub's DIG button is inert, or { ok: true }. */
+  canDigGraben() {
+    if (!this.wallRing) {
+      return { ok: false, reason: 'Build a castle first — the trench rings its walls.' };
+    }
+    if (this.state.hasGraben) return { ok: false, reason: 'Already dug.' };
+    if (!this.state.canAfford(GRABEN.cost)) return { ok: false, reason: null }; // cost chips say it
+    return { ok: true };
+  }
+
+  digGraben() {
+    const check = this.canDigGraben();
+    if (check.ok) this.state.digGraben(); // emits 'grabenDug' → #rebuildGraben
+    return check;
+  }
+
+  #grabenPositions() {
+    const r = this.wallRing;
+    const o = GRABEN.offset;
+    const left = r.left - o;
+    const right = r.right + o;
+    const top = r.top - o;
+    const bottom = r.bottom + o;
+    const positions = [];
+    const eps = 0.001; // guards the float accumulation in these <= walks
+
+    for (let x = left; x <= right + eps; x += GRABEN.spacing) positions.push({ x, z: top });
+    for (let z = top + GRABEN.spacing; z <= bottom + eps; z += GRABEN.spacing) {
+      positions.push({ x: right, z });
+    }
+    // Front edge, minus the causeway: the tiles in line with the wall's gate
+    // stay undug so the island never seals its own occupants in.
+    for (let x = right - GRABEN.spacing; x >= left - eps; x -= GRABEN.spacing) {
+      if (Math.abs(x - r.midX) >= WALL.gateHalfWidth) positions.push({ x, z: bottom });
+    }
+    for (let z = bottom - GRABEN.spacing; z >= top + GRABEN.spacing - eps; z -= GRABEN.spacing) {
+      positions.push({ x: left, z });
+    }
+    return positions;
+  }
+
+  #rebuildGraben() {
+    for (const tile of this.grabenTiles) this.#removeTile(tile);
+    this.grabenTiles = [];
+    if (!this.state.hasGraben || !this.wallRing) return;
+
+    this.#grabenPositions().forEach((pos, index) => {
+      this.#clearScenery(this.world.trees, pos.x, pos.z, GRABEN.clearRadius);
+      this.#clearScenery(this.world.rocks, pos.x, pos.z, GRABEN.clearRadius);
+
+      const group = createGrabenTile();
+      group.position.set(pos.x, 0, pos.z);
+      this.scene.add(group);
+      const tile = { group, collider: null };
+      this.grabenTiles.push(tile);
+      this.#grow(group, index * GRABEN.staggerMs, GRABEN.growSec, () => {
+        tile.collider = { x: pos.x, z: pos.z, radius: group.userData.collideRadius };
+        this.colliders.push(tile.collider);
+      });
+    });
+
+    const banner = new THREE.Vector3(this.wallRing.midX, 30, this.wallRing.top - GRABEN.offset - 40);
+    this.floatText(() => banner, '🕳️ Graben Dug!', 20);
+  }
+
+  // — Barbed wire: the front line, outside the graben ————————————————
+  // Enemies pile up against the trench's outer lip, so that band is the only
+  // place a contact hazard can ever bite. Slots fill nearest-the-gate first,
+  // guarding the causeway approach from both flanks — the causeway columns
+  // themselves stay clear, since wire is solid and would trap the player.
+
+  #frontSlots() {
+    const r = this.wallRing;
+    if (!r) return [];
+    const z = r.bottom + BARBED_WIRE.offset;
+    const slots = [];
+    for (let x = r.left; x <= r.right + 0.001; x += WALL.spacing) {
+      if (Math.abs(x - r.midX) < WALL.gateHalfWidth) continue; // causeway stays open
+      slots.push({ x, z });
+    }
+    slots.sort((a, b) => Math.abs(a.x - r.midX) - Math.abs(b.x - r.midX));
+    return slots;
+  }
+
+  /** Why the Hub's BUILD button is inert, or { ok: true }. */
+  canBuyBarbedWire() {
+    if (!this.wallRing) {
+      return { ok: false, reason: 'Build a castle first — wire lines its front wall.' };
+    }
+    if (this.state.barbedWires.length >= this.#frontSlots().length) {
+      return { ok: false, reason: 'The front line is full.' };
+    }
+    if (!this.state.canAfford(BARBED_WIRE.cost)) return { ok: false, reason: null };
+    return { ok: true };
+  }
+
+  buyBarbedWire() {
+    const check = this.canBuyBarbedWire();
+    if (!check.ok) return check;
+    const slot = this.#frontSlots()[this.state.barbedWires.length];
+    this.state.buildBarbedWire(slot.x, slot.z); // emits 'barbedWireAdded'
+    return check;
+  }
+
+  #spawnBarbedWire(entry) {
+    const group = createBarbedWire();
+    group.position.set(entry.x, 0, entry.z);
+    this.scene.add(group);
+
+    // A single segment pops in over 0.3s, so unlike the staggered wall/graben
+    // rings there's nothing to gain from delaying its collider.
+    const collider = { x: entry.x, z: entry.z, radius: BARBED_WIRE.collideRadius };
+    this.colliders.push(collider);
+    const hazard = {
+      x: entry.x,
+      z: entry.z,
+      radius: BARBED_WIRE.contactRadius,
+      damage: BARBED_WIRE.damage,
+      tickSec: BARBED_WIRE.tickSec,
+      label: '🌵 Barbed Wire!',
+    };
+    this.hazards.push(hazard);
+
+    this.wireRecords.set(entry.id, { entry, group, collider, hazard });
+    this.#grow(group, 0, BARBED_WIRE.growSec);
+
+    const anchor = new THREE.Vector3(entry.x, 26, entry.z);
+    this.floatText(() => anchor, '🌵 Barbed Wire!', 18);
+  }
+
+  #despawnBarbedWire(entry) {
+    const rec = this.wireRecords.get(entry.id);
+    if (!rec) return;
+    this.#removeGroup(rec.group);
+    this.#unlist(this.colliders, rec.collider);
+    this.#unlist(this.hazards, rec.hazard);
+    this.wireRecords.delete(entry.id);
+  }
+
+  /**
+   * Re-seat every owned segment onto the current front edge. Segments with no
+   * slot left (a rebuilt ring can be narrower) are refunded rather than
+   * silently destroyed. Also the restore path: entries loaded from a save have
+   * no mesh yet and get spawned here, once the walls are already up.
+   */
+  #relineBarbedWire() {
+    if (!this.wallRing) return;
+    const slots = this.#frontSlots();
+    const wires = this.state.barbedWires;
+    while (wires.length > slots.length) this.state.refundBarbedWire(wires[wires.length - 1]);
+
+    wires.forEach((entry, i) => {
+      entry.x = slots[i].x;
+      entry.z = slots[i].z;
+      const rec = this.wireRecords.get(entry.id);
+      if (!rec) {
+        this.#spawnBarbedWire(entry);
+        return;
+      }
+      rec.group.position.set(entry.x, 0, entry.z);
+      rec.collider.x = entry.x;
+      rec.collider.z = entry.z;
+      rec.hazard.x = entry.x;
+      rec.hazard.z = entry.z;
+    });
+  }
+
+  // — Shared teardown helpers ————————————————————————————————————
+  #unlist(list, item) {
+    const i = list.indexOf(item);
+    if (i >= 0) list.splice(i, 1);
+  }
+
+  #removeGroup(group) {
+    this.scene.remove(group);
+    // Drop any pending scale-in so a removed tile can't resurrect its collider.
+    for (let i = this.growing.length - 1; i >= 0; i--) {
+      if (this.growing[i].group === group) this.growing.splice(i, 1);
+    }
+  }
+
+  #removeTile(tile) {
+    this.#removeGroup(tile.group);
+    if (tile.collider) this.#unlist(this.colliders, tile.collider);
   }
 
   #clearScenery(list, x, z, radius = WALL.clearRadius) {
@@ -341,10 +570,16 @@ export class ConstructionManager {
     }
   }
 
-  // — Per-frame animation: wall stagger/grow + structure pop tweens ————
+  // — Per-frame animation: staggered grow-ins + structure pop tweens ————
   #tween(group, fromScale, toScale, dur, onDone) {
     group.scale.copy(fromScale);
     this.tweens.push({ group, fromScale, toScale, t: 0, dur, onDone });
+  }
+
+  /** Queue a scale-in: hold for `delayMs`, then 0 → full over `dur` seconds. */
+  #grow(group, delayMs, dur, onGrown) {
+    group.scale.setScalar(0.001);
+    this.growing.push({ group, delaySec: delayMs / 1000, t: 0, dur, onGrown });
   }
 
   update(dt) {
@@ -361,22 +596,18 @@ export class ConstructionManager {
       }
     }
 
-    for (const tile of this.wallTiles) {
-      if (tile.collider) continue; // fully grown
-      if (tile.delaySec > 0) {
-        tile.delaySec -= dt;
+    for (let i = this.growing.length - 1; i >= 0; i--) {
+      const g = this.growing[i];
+      if (g.delaySec > 0) {
+        g.delaySec -= dt;
         continue;
       }
-      tile.growT = Math.min(1, tile.growT + dt / WALL.growSec);
-      tile.group.scale.setScalar(Math.max(0.001, easeOutBack(tile.growT)));
-      if (tile.growT >= 1) {
-        // Collision arms once grown, like the 2D refreshBody-on-complete.
-        tile.collider = {
-          x: tile.group.position.x,
-          z: tile.group.position.z,
-          radius: tile.group.userData.collideRadius,
-        };
-        this.colliders.push(tile.collider);
+      g.t = Math.min(1, g.t + dt / g.dur);
+      g.group.scale.setScalar(Math.max(0.001, easeOutBack(g.t)));
+      if (g.t >= 1) {
+        g.group.scale.setScalar(1);
+        this.growing.splice(i, 1);
+        g.onGrown?.();
       }
     }
   }

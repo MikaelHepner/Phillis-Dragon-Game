@@ -3,7 +3,8 @@
 //
 // The documented schema is the core of the file and is written verbatim:
 // saveVersion, timestamp, resources, ownedDragons[{ name, key, stats }],
-// ownedCards[{ name, type, key }], structures[{ x, y, type, upgradeType }].
+// ownedCards[{ name, type, key }], structures[{ x, y, type, upgradeType }],
+// plus defences{ barbedWires, hasGraben } for the outer ring.
 // Structures keep the doc's 2D field names, so its `y` is our world `z` —
 // exactly the mapping GameState already documents for its structure entries.
 //
@@ -11,6 +12,8 @@
 // 3D game genuinely cannot restore an island without them:
 //   - ownedDragons[].id / .typeId — crafted dragons have unique ids and a
 //     separate factory type, so name+key alone can't rebuild them
+//   - ownedDragons[].armored      — forged armor is permanent, so a restored
+//     dragon that loses its plate would be a silent refund of 6 stone
 //   - structures[].id            — upgrade menus address structures by id
 //   - counters                   — keeps freshly crafted/built ids unique
 //   - worldSeed                  — the 3D island scatters its own trees/rocks,
@@ -63,6 +66,7 @@ export function serialize(state, { worldSeed, timeOfDay, player } = {}) {
       typeId: d.typeId,
       name: d.name,
       key: d.key,
+      armored: !!d.armored,
       stats: { ...d.stats },
     })),
     ownedCards: state.ownedCards.map((c) => ({
@@ -80,7 +84,18 @@ export function serialize(state, { worldSeed, timeOfDay, player } = {}) {
       y: s.z, // §5 uses the 2D plane's y for our world z
       upgradeType: s.upgradeType,
     })),
-    counters: { craftCount: state.craftCount, structureCount: state.structureCount },
+    // Outer defences. Like the walls, only the counts are stored — the trench
+    // ring and the wire's front slots are re-derived from the restored wall
+    // geometry, so a loaded island matches a live one exactly.
+    defences: {
+      barbedWires: state.barbedWires.length,
+      hasGraben: state.hasGraben,
+    },
+    counters: {
+      craftCount: state.craftCount,
+      structureCount: state.structureCount,
+      wireCount: state.wireCount,
+    },
     player: player ? { x: player.x, z: player.z } : null,
   };
 }
@@ -140,6 +155,14 @@ export function applySave(state, save) {
         stats: { ...d.stats },
       });
     }
+    // Armor comes back through the live event, so the scene bolts the plate on
+    // exactly like a fresh forge does — 'dragonAdded' above has already built
+    // the mesh by now. Saves from before armor existed simply lack the field.
+    const entry = state.getDragon(d.id);
+    if (d.armored && entry) {
+      entry.armored = true;
+      state.emit('armorEquipped', entry);
+    }
   }
 
   // — Cards —
@@ -169,6 +192,14 @@ export function applySave(state, save) {
     state.structures.push(entry);
     state.emit('structureAdded', entry);
   }
+
+  // — Outer defences — strictly after the structures, because the trench and
+  // the wire's front slots are both derived from the wall ring those rebuild.
+  state.restoreDefences({
+    barbedWires: Math.max(0, Math.floor(save.defences?.barbedWires ?? 0)),
+    wireCount: save.counters?.wireCount ?? 0,
+    hasGraben: save.defences?.hasGraben === true,
+  });
 
   state.emit('loaded', save);
 }

@@ -11,6 +11,17 @@ import * as THREE from 'three';
 
 export const DAY_LENGTH_SEC = 480; // one full in-game day = 8 real minutes
 
+// Bedtime window for team dragons (companions/NightShelter.js). Deliberately
+// the same bounds label() uses for its 🌙 icon, so the moon on the HUD and the
+// dragons heading indoors can never disagree.
+export const NIGHT_START = 0.84;
+export const NIGHT_END = 0.24;
+
+/** True when it is dark enough for companions to turn in. */
+export function isNightTime(t) {
+  return t >= NIGHT_START || t < NIGHT_END;
+}
+
 // t is normalised time-of-day: 0 = midnight, 0.25 = sunrise, 0.5 = noon,
 // 0.75 = sunset. Keyframes are interpolated (and wrap around 1 → 0).
 //
@@ -212,12 +223,17 @@ export class DayNightCycle {
     this.time = ((t % 1) + 1) % 1;
   }
 
+  /** True while companions should be sheltering indoors. */
+  get isNight() {
+    return isNightTime(this.time);
+  }
+
   /** "14:20"-style clock plus the phase emoji, for the HUD chip. */
   label() {
     const totalMinutes = Math.floor(this.time * 24 * 60);
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
-    const icon = this.time < 0.24 || this.time >= 0.84 ? '🌙'
+    const icon = isNightTime(this.time) ? '🌙'
       : this.time < 0.32 ? '🌅'
       : this.time < 0.7 ? '☀️'
       : this.time < 0.79 ? '🌇'

@@ -25,6 +25,65 @@ export const BUILDINGS = [
 ];
 export const BUILDINGS_BY_ID = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
 
+// — Outer defences (no 2D equivalent; both hang off the castle's wall ring) —
+// Neither is a placeable "structure": they never enter state.structures, so
+// they can't widen the wall's bounding box or open the upgrade menu. They are
+// instant buys instead of ghost placements — position is derived from the ring.
+export const BARBED_WIRE = {
+  id: 'barbed_wire',
+  name: 'Barbed Wire',
+  icon: '🌵',
+  cost: { stone: 1, wood: 1 },
+  desc: 'A spiked coil for the front line. Blocks black dragons and shreds them on contact.',
+  // Slots line the front (+z) wall edge, filled nearest-the-gate first, and
+  // sit OUTSIDE the graben — the one band attackers can actually reach.
+  offset: 80, // units beyond the wall ring's front edge
+  collideRadius: 16,
+  contactRadius: 26, // an enemy this close is "on the wire"
+  damage: 10, // per contact tick
+  tickSec: 1,
+  growSec: 0.3,
+  staggerMs: 0, // single segments pop instantly; nothing to stagger against
+};
+
+export const GRABEN = {
+  id: 'graben',
+  name: 'Graben',
+  icon: '🕳️',
+  cost: { stone: 15 },
+  desc: 'Dig an impassable trench ring around your walls. The gate keeps a causeway.',
+  offset: 40, // one tile-spacing outside the wall ring
+  spacing: 40, // same 40-unit grid the wall tiles use
+  collideRadius: 21, // matches a wall tile: neighbours overlap, nothing slips through
+  clearRadius: 30, // trees/rocks this close are removed, like wall tiles
+  staggerMs: 30, // per-tile dig-in delay (index × 30ms)
+  growSec: 0.35,
+};
+
+// — Dragon armor (no 2D equivalent) — the one Hub row that isn't built on the
+// island at all: it is forged FOR a dragon, so the Hub swaps in a dragon picker
+// instead of a ghost placement. It never enters state.structures either; the
+// only thing it changes is a flag on the owned-dragon entry.
+export const DRAGON_ARMOR = {
+  id: 'dragon_armor',
+  name: 'Dragon Armor',
+  icon: '🛡️',
+  cost: { stone: 6 },
+  desc: 'Forge steel plate for one dragon — it takes half damage from then on.',
+  equip: true, // BuildUI: FORGE opens the dragon picker
+  damageMultiplier: 0.5, // every hit on an armored dragon is scaled by this
+};
+
+// Everything the Construction Hub lists, in menu order. `instant: true` rows
+// build on click instead of entering ghost-placement mode; `equip: true` rows
+// pick a dragon instead of a spot.
+export const BUILDABLES = [
+  ...BUILDINGS,
+  { ...GRABEN, instant: true },
+  { ...BARBED_WIRE, instant: true },
+  DRAGON_ARMOR,
+];
+
 // — One-shot upgrade classes (2D UIScene renderHouseUpgradeOptions `options`).
 // A structure starts upgradeType=null and converts once, irreversibly.
 // NOTE: the 2D menu said Mine "Generates passive coins" — a stale label; the

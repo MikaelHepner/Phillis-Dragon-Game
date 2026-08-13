@@ -6,6 +6,7 @@ import {
   ENEMY_ATTACK_DAMAGE,
   PLAYER_ATTACK_DAMAGE,
   ENEMY_LOOT_COINS,
+  armoredDamage,
 } from '../state/GameState.js';
 
 // Black Dragon enemies (Batch 9): spawn rules and the Roam → Aggro Chase →
@@ -78,6 +79,7 @@ export class EnemyManager {
    * @param {THREE.Camera} opts.camera        for click-attack raycasts
    * @param {GameState} opts.state
    * @param {Array} opts.colliders            shared { x, z, radius } obstacles
+   * @param {Array} opts.hazards              shared contact-damage zones (barbed wire)
    * @param {object} opts.bounds              { size, margin }
    * @param {number} opts.groundY
    * @param {ProjectileManager} opts.projectiles
@@ -85,11 +87,15 @@ export class EnemyManager {
    * @param {object} opts.playerDragon        the player's Dragon (for lunges)
    * @param {Function} opts.floatText         main.js floating-text helper
    */
-  constructor({ scene, camera, state, colliders, bounds, groundY, projectiles, getFriendlies, playerDragon, floatText }) {
+  constructor({ scene, camera, state, colliders, hazards, bounds, groundY, projectiles, getFriendlies, playerDragon, floatText }) {
     this.scene = scene;
     this.camera = camera;
     this.state = state;
     this.colliders = colliders;
+    // Contact-damage zones the ConstructionManager maintains (barbed wire).
+    // Only black dragons are hurt by them — friendlies are merely blocked by
+    // the matching collider, so the player can't shred their own dragons.
+    this.hazards = hazards ?? [];
     this.bounds = bounds;
     this.groundY = groundY;
     this.projectiles = projectiles;
@@ -145,6 +151,7 @@ export class EnemyManager {
       hp: ENEMY.hp,
       label,
       cooldown: 0,
+      hazardCd: 0,
       roamT: 0,
       vx: 0,
       vz: 0,
@@ -226,10 +233,44 @@ export class EnemyManager {
     // Black dragons breathe their element — 'dark' shadow orbs.
     this.projectiles.fireElement('dark', from, getTargetPos, () => {
       if (this.state.isGameOver) return;
+      // The target may have stepped inside a building while the orb was in
+      // flight. getFriendlies() drops sheltered dragons, so it is no longer a
+      // legal target and the orb breaks harmlessly on the doorstep.
+      if (!this.getFriendlies().includes(target)) return;
       target.dragon.play('hurt');
-      this.state.damageDragon(target.id, ENEMY_ATTACK_DAMAGE);
-      this.floatText(() => targetGroup.position, `-${ENEMY_ATTACK_DAMAGE} HP 💔`, 50, 20);
+      const hurt = this.state.damageDragon(target.id, ENEMY_ATTACK_DAMAGE);
+      // Armor halves the hit inside damageDragon, so the popup has to be told
+      // the same story rather than the raw fireball damage.
+      const dealt = armoredDamage(hurt, ENEMY_ATTACK_DAMAGE);
+      this.floatText(() => targetGroup.position, `-${dealt} HP 💔`, 50, 20);
     });
+  }
+
+  // — Contact hazards (barbed wire) ————————————————————————————————
+  /**
+   * Chip HP off any black dragon standing in a hazard zone, once per its tick
+   * interval. Hits are collected first and applied after: hurt() can splice the
+   * enemy out of the list, which would skip a neighbour mid-iteration.
+   */
+  #tickHazards(dt) {
+    if (this.hazards.length === 0) return;
+    const hits = [];
+    for (const enemy of this.enemies) {
+      enemy.hazardCd = Math.max(0, enemy.hazardCd - dt);
+      if (enemy.hazardCd > 0) continue;
+      const pos = enemy.mover.position;
+      const zone = this.hazards.find(
+        (h) => Math.hypot(pos.x - h.x, pos.z - h.z) < h.radius
+      );
+      if (!zone) continue;
+      enemy.hazardCd = zone.tickSec;
+      hits.push({ enemy, zone });
+    }
+    for (const { enemy, zone } of hits) {
+      const pos = enemy.dragon.group.position;
+      this.floatText(() => pos, `${zone.label} -${zone.damage} HP`, 44, 18);
+      this.hurt(enemy, zone.damage);
+    }
   }
 
   // — Per-frame: spawn clock, AI state machine, death animations ————————
@@ -304,6 +345,8 @@ export class EnemyManager {
 
       enemy.mover.step(vx, vz, dt);
     }
+
+    this.#tickHazards(dt);
 
     // Death spin-outs: shrink + spin + sink over 0.5s, then remove.
     for (let i = this.dying.length - 1; i >= 0; i--) {

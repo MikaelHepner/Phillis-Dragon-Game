@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createDragon } from '../dragons/DragonFactory.js';
 import { DRAGON_TYPES_BY_ID } from '../data/dragonTypes.js';
 import { ProjectileManager } from '../combat/Projectiles.js';
+import { armoredDamage } from '../state/GameState.js';
 
 // Battle Arena (Batch 10) — the dedicated fight mode from the 2D BattleScene,
 // rebuilt as its OWN Three.js scene with its own camera and lighting. While a
@@ -270,7 +271,7 @@ export class BattleArena {
     this.endT = 0; // >0 after win/lose, counts down to teardown
     this.nextOppAttack = rand(OPP_ATTACK_MIN_SEC, OPP_ATTACK_MAX_SEC);
 
-    this.playerDragon = this.#spawn(team[0].typeId, -FIGHTER_X, Math.PI / 2);
+    this.playerDragon = this.#spawn(team[0].typeId, -FIGHTER_X, Math.PI / 2, team[0].armored);
     this.opponentDragon = this.#spawn(opponent.typeId, FIGHTER_X, -Math.PI / 2);
 
     this.els.playerName.textContent = team[0].name;
@@ -285,13 +286,14 @@ export class BattleArena {
     this.onSceneChange?.();
   }
 
-  #spawn(typeId, x, yaw) {
+  #spawn(typeId, x, yaw, armored = false) {
     const type = DRAGON_TYPES_BY_ID[typeId] ?? DRAGON_TYPES_BY_ID.phillis;
     const dragon = createDragon(type);
     dragon.group.position.set(x, 0, 0);
     dragon.group.rotation.y = yaw; // face the other fighter
     dragon.group.scale.multiplyScalar(FIGHTER_SCALE); // keeps the type's own scale
     dragon.setAnimation('idle');
+    if (armored) dragon.setArmor(true); // your fighter wears its island armor
     this.scene.add(dragon.group);
     return dragon;
   }
@@ -375,13 +377,20 @@ export class BattleArena {
     const target = toPlayer ? this.playerDragon : this.opponentDragon;
     if (!target || (toPlayer && this.switchT > 0)) return;
 
-    if (toPlayer) this.playerHP = Math.max(0, this.playerHP - BATTLE_DAMAGE);
-    else this.opponentHP = Math.max(0, this.opponentHP - BATTLE_DAMAGE);
+    // Forged armor halves what your fighter takes. The arena keeps its own HP
+    // pool rather than the dragon's stats, so it can't route through
+    // GameState.damageDragon — it applies the same formula itself.
+    const dealt = toPlayer
+      ? armoredDamage(this.team[this.teamIndex], BATTLE_DAMAGE)
+      : BATTLE_DAMAGE;
+
+    if (toPlayer) this.playerHP = Math.max(0, this.playerHP - dealt);
+    else this.opponentHP = Math.max(0, this.opponentHP - dealt);
 
     target.play('hurt'); // shake + red flash
     this.audio?.sfx('hit');
     this.#renderHp(toPlayer ? 'player' : 'opponent');
-    this.#floatDamage(target.group.position, `-${BATTLE_DAMAGE}`);
+    this.#floatDamage(target.group.position, `-${dealt}`);
 
     const hp = toPlayer ? this.playerHP : this.opponentHP;
     if (hp > 0) return;
@@ -401,7 +410,7 @@ export class BattleArena {
     const next = this.team[this.teamIndex];
     this.switchT = SWITCH_SEC;
     this.#despawn(this.playerDragon);
-    this.playerDragon = this.#spawn(next.typeId, -FIGHTER_X - 60, Math.PI / 2);
+    this.playerDragon = this.#spawn(next.typeId, -FIGHTER_X - 60, Math.PI / 2, next.armored);
     this.playerHP = BATTLE_MAX_HP;
     this.els.playerName.textContent = next.name;
     this.#renderHp('player');
