@@ -639,6 +639,46 @@
         50% { transform: translateX(-50%) translateY(-4px); }
       }
 
+      /* — Batch 9: Game Over overlay — */
+      #gameover-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 40;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+        user-select: none;
+      }
+      #gameover-overlay.open { display: flex; }
+      .gameover-title {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: clamp(44px, 10vw, 72px);
+        font-weight: bold;
+        color: #ff0000;
+        letter-spacing: 4px;
+        text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+        animation: titlepop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      .gameover-sub {
+        font-size: 24px;
+        color: #fff;
+      }
+      #gameover-restart {
+        cursor: pointer;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 28px;
+        font-weight: bold;
+        color: #fff;
+        background: #27ae60;
+        border: none;
+        padding: 15px 30px;
+        transition: transform 0.1s ease;
+      }
+      #gameover-restart:hover { transform: scale(1.05); }
+
       @media (max-width: 640px) {
         #dragon-panel { width: 56vw; }
         #top-left { max-width: 52vw; }
@@ -651,7 +691,7 @@
 
     <div id="top-left">
       <div id="resource-bar"></div>
-      <span class="hud-chip" id="hint">WASD / Arrows to walk · Walk into 🌳 trees &amp; 🪨 rocks to harvest · Click a dragon to care for it · Drag to orbit</span>
+      <span class="hud-chip" id="hint">WASD / Arrows to walk · Walk into 🌳 trees &amp; 🪨 rocks to harvest · Click a dragon to care for it · Click 😈 Black Dragons to attack · Drag to orbit</span>
     </div>
 
     <div id="top-right">
@@ -676,6 +716,12 @@
     <span class="hud-chip" id="place-hint"></span>
 
     <div id="dragon-panel" class="hidden"></div>
+
+    <div id="gameover-overlay">
+      <div class="gameover-title">GAME OVER</div>
+      <div class="gameover-sub">Phillis has fainted!</div>
+      <button id="gameover-restart">TRY AGAIN</button>
+    </div>
 
     <script type="module" src="/src3d/main.js"></script>
   </body>

@@ -33,6 +33,11 @@ export const GIVE_ICON_MS = 60000;
 
 export const STAT_MAX = 100;
 
+// — Overworld combat (2D MainScene enemyAttack / attackBlackDragon) —
+export const ENEMY_ATTACK_DAMAGE = 10; // black dragon fireball hit
+export const PLAYER_ATTACK_DAMAGE = 35; // player click-attack on an enemy
+export const ENEMY_LOOT_COINS = 3; // paid out per defeated black dragon
+
 // Fresh stat blocks matching the exact 2D initial values.
 export function starterStats() {
   return { love: 20, hunger: 80, energy: 100, hp: 100, level: 1, xp: 0 };
@@ -77,6 +82,7 @@ export class GameState extends Emitter {
     // [{ id, type: 'house'|'castle', x, z, upgradeType: null|'tower'|'mine'|'blacksmith' }]
     this.structures = [];
     this.structureCount = 0;
+    this.isGameOver = false; // set once when Phillis faints (Batch 9)
   }
 
   // — Ownership ————————————————————————————————————————————————
@@ -378,6 +384,25 @@ export class GameState extends Emitter {
     this.emit('stats', d);
     this.emit('rest', d);
     return true;
+  }
+
+  // — Overworld combat (Batch 9) ————————————————————————————————
+  /**
+   * Apply enemy damage to an owned dragon (2D enemyAttack: -10 HP). If the
+   * primary dragon — ownedDragons[0], Phillis — reaches 0 HP, the run is over:
+   * emits 'gameOver' once (2D triggerGameOver). Returns the dragon, or null.
+   */
+  damageDragon(id, amount) {
+    const d = this.getDragon(id);
+    if (!d || this.isGameOver) return null;
+    d.stats.hp = Math.max(0, d.stats.hp - amount);
+    this.emit('stats', d);
+    this.emit('damaged', d);
+    if (this.ownedDragons[0] === d && d.stats.hp <= 0) {
+      this.isGameOver = true;
+      this.emit('gameOver');
+    }
+    return d;
   }
 
   // — Passive decay (call every DECAY_INTERVAL_MS) ————————————————

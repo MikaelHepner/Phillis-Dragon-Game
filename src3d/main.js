@@ -22,6 +22,10 @@ import { HarvestManager } from './harvest/HarvestManager.js';
 import { ConstructionManager } from './structures/ConstructionManager.js';
 import { PRODUCTION_INTERVAL_MS } from './data/structures.js';
 import { cardIcon } from './data/cards.js';
+import { ProjectileManager } from './combat/Projectiles.js';
+import { EnemyManager } from './combat/EnemyManager.js';
+import { TowerDefense } from './combat/TowerDefense.js';
+import { GameOverUI } from './ui/GameOverUI.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -58,6 +62,7 @@ const state = new GameState();
 new Hud(state);
 new StoreUI(state); // dragon store + pack store overlays (Batch 6)
 new CraftingUI(state); // card crafting center overlay (Batch 7)
+new GameOverUI(state); // dark GAME OVER screen + TRY AGAIN (Batch 9)
 
 // Registry of selectable dragons in the world: { id, dragon } keyed for
 // raycasting and for playing per-dragon feedback animations.
@@ -147,9 +152,10 @@ function pickDragon(clientX, clientY) {
 }
 
 // Tap routing, in priority order: placement mode consumes every click, then
-// dragon selection, then a placed structure (upgrade menu), then a harvest
-// node in range; otherwise the tap falls through to click-to-move (which
-// walks the player toward a distant node so walk-into harvesting finishes).
+// dragon selection, then a black-dragon attack, then a placed structure
+// (upgrade menu), then a harvest node in range; otherwise the tap falls
+// through to click-to-move (which walks the player toward a distant node so
+// walk-into harvesting finishes).
 const player = new PlayerController(playerDragon, camera, canvas, {
   colliders,
   bounds,
@@ -157,6 +163,7 @@ const player = new PlayerController(playerDragon, camera, canvas, {
   onClick: (x, y) =>
     construction.handleClick(x, y) ||
     pickDragon(x, y) ||
+    enemies.tryClickAttack(x, y, player.position) ||
     construction.tryClickStructure(x, y) ||
     harvest.tryClick(x, y, player.position),
 });
@@ -299,8 +306,50 @@ state.on('produced', ({ structure, label }) => {
   if (anchor) floatText(() => anchor, label, 14, 20);
 });
 
+// — Overworld combat (Batch 9): black dragons, projectiles, tower defense —
+const projectiles = new ProjectileManager(scene);
+const enemies = new EnemyManager({
+  scene,
+  camera,
+  state,
+  colliders,
+  bounds,
+  groundY: GROUND_Y,
+  projectiles,
+  getFriendlies: () => selectables,
+  playerDragon,
+  floatText,
+});
+const towers = new TowerDefense({
+  state,
+  construction,
+  projectiles,
+  enemyManager: enemies,
+  floatText,
+});
+
+// Game over freezes the run like the 2D physics.pause() + removeAllEvents():
+// the caretaking/production clocks stop and the animate loop skips gameplay
+// updates (rendering continues under the overlay).
+state.on('gameOver', () => {
+  clearInterval(decayTimer);
+  clearInterval(productionTimer);
+  construction.cancelPlacement();
+});
+
 // Debug hook for automated verification (harmless in normal play).
-window.__game = { player, companions, playerDragon, state, harvest, construction };
+window.__game = {
+  player,
+  companions,
+  playerDragon,
+  state,
+  harvest,
+  construction,
+  enemies,
+  towers,
+  projectiles,
+  camera,
+};
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -320,9 +369,14 @@ function animate() {
   const time = clock.elapsedTime;
 
   world.update(time);
-  player.update(dt);
-  companions.update(dt, player.position);
-  harvest.update(dt, player.position);
+  if (!state.isGameOver) {
+    player.update(dt);
+    companions.update(dt, player.position);
+    harvest.update(dt, player.position);
+    enemies.update(dt, player.position);
+    towers.update(dt);
+    projectiles.update(dt);
+  }
   construction.update(dt);
 
   // Keep the selection ring pinned under the selected dragon.
