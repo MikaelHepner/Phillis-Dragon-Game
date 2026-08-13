@@ -83,6 +83,9 @@ export class ProjectileManager {
     this.scene = scene;
     this.shots = []; // { group, getTargetPos, speed, spin, trail, life, trailT, onHit }
     this.puffs = []; // { mesh, t }
+    // Batch 11 audio hook: (kind: 'fire' | 'arrow') => void. Set by main.js so
+    // every launcher (enemies, towers, arena fighters) is covered in one place.
+    this.onFire = null;
   }
 
   /**
@@ -98,6 +101,7 @@ export class ProjectileManager {
     group.add(buildCore(style));
     group.position.copy(from);
     this.scene.add(group);
+    this.onFire?.('fire');
     this.shots.push({
       group,
       getTargetPos,
@@ -116,6 +120,7 @@ export class ProjectileManager {
     const group = buildArrow();
     group.position.copy(from);
     this.scene.add(group);
+    this.onFire?.('arrow');
     this.shots.push({
       group,
       getTargetPos,

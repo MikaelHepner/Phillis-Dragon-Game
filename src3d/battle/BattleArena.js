@@ -37,10 +37,14 @@ export class BattleArena {
    * @param {GameState} state    for the coin reward
    * @param {object} opts
    * @param {THREE.Texture} [opts.environment]  env map so metal/glass skins reflect
+   * @param {AudioManager} [opts.audio]         hit / victory / defeat sounds
    */
-  constructor(state, { environment = null } = {}) {
+  constructor(state, { environment = null, audio = null } = {}) {
     this.state = state;
+    this.audio = audio;
     this.active = false;
+    // Batch 11: fires on start and teardown so main.js can swap the music.
+    this.onSceneChange = null;
 
     // — Own scene: a dusk-lit arena so it reads as "somewhere else" —
     this.scene = new THREE.Scene();
@@ -278,6 +282,7 @@ export class BattleArena {
 
     this.hud.classList.add('open');
     document.body.classList.add('in-battle'); // hides the island HUD via CSS
+    this.onSceneChange?.();
   }
 
   #spawn(typeId, x, yaw) {
@@ -315,6 +320,7 @@ export class BattleArena {
     this.floaters.length = 0;
     this.hud.classList.remove('open');
     document.body.classList.remove('in-battle');
+    this.onSceneChange?.();
   }
 
   // — Input: clicks on the canvas while a battle is active ————————————
@@ -373,6 +379,7 @@ export class BattleArena {
     else this.opponentHP = Math.max(0, this.opponentHP - BATTLE_DAMAGE);
 
     target.play('hurt'); // shake + red flash
+    this.audio?.sfx('hit');
     this.#renderHp(toPlayer ? 'player' : 'opponent');
     this.#floatDamage(target.group.position, `-${BATTLE_DAMAGE}`);
 
@@ -404,6 +411,7 @@ export class BattleArena {
 
   #end(victory) {
     this.endT = END_DELAY_SEC;
+    this.audio?.sfx(victory ? 'victory' : 'defeat');
     if (victory) {
       this.state.addResource('coins', BATTLE_REWARD_COINS);
       this.#banner(`VICTORY!  +${BATTLE_REWARD_COINS} 🪙`, '#ffe95e');

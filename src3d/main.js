@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createWorld, WORLD_CENTER } from './world.js';
+import { createWorld, randomWorldSeed, WORLD_CENTER } from './world.js';
 import { CameraRig } from './cameraRig.js';
 import { createDragon } from './dragons/DragonFactory.js';
 import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
@@ -14,10 +14,12 @@ import {
   GIVE_TICK_COUNT,
   GIVE_ICON_MS,
 } from './state/GameState.js';
+import { readSave, writeSave, clearSave, applySave, AUTOSAVE_MS } from './state/SaveManager.js';
 import { Hud } from './ui/Hud.js';
 import { StoreUI } from './ui/StoreUI.js';
 import { CraftingUI } from './ui/CraftingUI.js';
 import { BuildUI } from './ui/BuildUI.js';
+import { SettingsUI } from './ui/SettingsUI.js';
 import { HarvestManager } from './harvest/HarvestManager.js';
 import { ConstructionManager } from './structures/ConstructionManager.js';
 import { PRODUCTION_INTERVAL_MS } from './data/structures.js';
@@ -28,6 +30,9 @@ import { TowerDefense } from './combat/TowerDefense.js';
 import { GameOverUI } from './ui/GameOverUI.js';
 import { BattleArena } from './battle/BattleArena.js';
 import { FightUI } from './ui/FightUI.js';
+import { DayNightCycle } from './DayNightCycle.js';
+import { AudioManager } from './audio/AudioManager.js';
+import { BlackRoom } from './blackroom/BlackRoom.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -57,8 +62,36 @@ const camera = new THREE.PerspectiveCamera(
   5000
 );
 
-const world = createWorld(scene);
+// — Save file (Batch 11) —————————————————————————————————————————
+// Read before anything is built: the island's own layout comes from the saved
+// world seed, so scenery has to be generated with it rather than re-scattered.
+const save = readSave();
+const worldSeed = save?.worldSeed ?? randomWorldSeed();
+
+const world = createWorld(scene, worldSeed);
 const { colliders, bounds } = world;
+
+// Sun/sky/water animation + the player-following shadow frustum.
+const dayNight = new DayNightCycle({
+  scene,
+  sun: world.sun,
+  hemi: world.hemi,
+  water: world.water,
+});
+if (typeof save?.timeOfDay === 'number') dayNight.setTime(save.timeOfDay);
+
+// — Audio: synthesized SFX + music, unlocked on the first user gesture —
+const audio = new AudioManager();
+audio.arm();
+// Every HUD button clicks. Capture phase so panels that stop propagation
+// still make a sound.
+document.addEventListener(
+  'click',
+  (e) => {
+    if (e.target instanceof Element && e.target.closest('button')) audio.sfx('click');
+  },
+  true
+);
 
 // — Game state: the single source of truth for resources + per-dragon stats —
 const state = new GameState();
@@ -76,8 +109,14 @@ function register(id, dragon, entry) {
 }
 
 // — Player: the starter dragon (Phillis) —
+// A loaded game drops her back where she was standing, so restored companions
+// (which spawn behind the player) come back with her instead of at the center.
 const playerDragon = createDragon(DRAGON_TYPES_BY_ID.phillis);
-playerDragon.group.position.set(WORLD_CENTER.x, GROUND_Y, WORLD_CENTER.z);
+playerDragon.group.position.set(
+  save?.player?.x ?? WORLD_CENTER.x,
+  GROUND_Y,
+  save?.player?.z ?? WORLD_CENTER.z
+);
 scene.add(playerDragon.group);
 const playerEntry = state.addDragon({
   id: 'phillis',
@@ -91,9 +130,10 @@ register('phillis', playerDragon, playerEntry);
 // replaced the Batch-3 hard-coded test companions with real purchases.) —
 const companions = new CompanionManager({ colliders, bounds, groundY: GROUND_Y });
 
-// Any dragon added to the collection after boot (store purchase or a crafted
-// dragon) spawns just behind the player and joins the follow chain. Crafted
-// dragons have unique ids, so the factory config comes from entry.typeId.
+// Any dragon added to the collection after boot (store purchase, crafted
+// dragon, or one restored from a save) spawns just behind the player and joins
+// the follow chain. Crafted dragons have unique ids, so the factory config
+// comes from entry.typeId.
 state.on('dragonAdded', (entry) => {
   const type = DRAGON_TYPES_BY_ID[entry.typeId];
   if (!type || entry.id === 'phillis') return;
@@ -151,6 +191,7 @@ function pickDragon(clientX, clientY) {
   while (obj && obj.userData.dragonId === undefined) obj = obj.parent;
   if (!obj) return false;
   state.select(obj.userData.dragonId);
+  audio.sfx('select');
   return true;
 }
 
@@ -178,17 +219,25 @@ state.select('phillis');
 
 const cameraRig = new CameraRig(camera, playerDragon.group, canvas);
 
+// The island freezes while the arena or the Black Room is on screen (the 3D
+// equivalent of the 2D scene.pause('MainScene')) — one predicate, used by the
+// animate loop and by every wall-clock timer.
+const islandPaused = () => battle.active || blackRoom.active;
+
 // — Passive stat decay (TECHNICAL_ARCHITECTURE.md §4: every 15,000ms) —
-// Frozen during arena battles, like the 2D scene.pause('MainScene').
 const decayTimer = setInterval(() => {
-  if (!battle.active) state.tickDecay();
+  if (!islandPaused()) state.tickDecay();
 }, DECAY_INTERVAL_MS);
 window.addEventListener('beforeunload', () => clearInterval(decayTimer));
 
 // — Floating text feedback (caretaking emoji + harvest "+1 🍎" pops) —
 // `getPos` returns a live world-space anchor; `base` is the height above it.
+// Suppressed while a save is being restored: rebuilding an island through the
+// live code paths would otherwise fire a "🏠 House Built!" for every structure.
+let restoring = false;
 const floaters = [];
 function floatText(getPos, text, base = 34, size = 26) {
+  if (restoring) return;
   const el = document.createElement('div');
   el.textContent = text;
   el.className = 'island-float'; // hidden while a battle covers the island
@@ -259,11 +308,33 @@ function reactTo(id) {
   const s = selectables.find((x) => x.id === id);
   return s ? s.dragon : null;
 }
-state.on('feed', (d) => floatOnDragon(reactTo(d.id), '🍎'));
-state.on('pet', (d) => floatOnDragon(reactTo(d.id), '💖'));
-state.on('rest', (d) => floatOnDragon(reactTo(d.id), '💤'));
-state.on('feedFail', (d) => floatOnDragon(reactTo(d.id), '❌'));
-state.on('dragonCrafted', (d) => floatOnDragon(reactTo(d.id), '🎉'));
+state.on('feed', (d) => {
+  floatOnDragon(reactTo(d.id), '🍎');
+  audio.sfx('feed');
+});
+state.on('pet', (d) => {
+  floatOnDragon(reactTo(d.id), '💖');
+  audio.sfx('pet');
+});
+state.on('rest', (d) => {
+  floatOnDragon(reactTo(d.id), '💤');
+  audio.sfx('rest');
+});
+state.on('feedFail', (d) => {
+  floatOnDragon(reactTo(d.id), '❌');
+  audio.sfx('error');
+});
+state.on('dragonCrafted', (d) => {
+  floatOnDragon(reactTo(d.id), '🎉');
+  audio.sfx('levelup');
+});
+// `restoring` guards the two events a save replays in bulk — a loaded island
+// should not sound like twelve dragons hatching at once.
+state.on('dragonAdded', () => {
+  if (!restoring) audio.sfx('spawn');
+});
+state.on('packOpened', () => audio.sfx('pack'));
+state.on('damaged', () => audio.sfx('hit'));
 
 // — Give-card-to-dragon production (Batch 7, 2D handle*Generation timers):
 // the card's icon bobs over the dragon for 60s while it produces +1 of the
@@ -276,7 +347,7 @@ state.on('cardGiven', ({ card, dragon, resource }) => {
   pinText(anchor, cardIcon(card), GIVE_ICON_MS);
   let ticks = 0;
   const timer = setInterval(() => {
-    if (battle.active) return; // island clocks freeze during arena battles
+    if (islandPaused()) return; // island clocks freeze while the island is away
     state.addResource(resource, 1);
     floatText(anchor, RESOURCE_POPS[resource], 40, 20);
     if (++ticks >= GIVE_TICK_COUNT) clearInterval(timer);
@@ -289,6 +360,7 @@ const harvest = new HarvestManager({
   onHarvest(node, cfg) {
     for (const y of cfg.yields) state.addResource(y.res, y.amount);
     floatText(() => node.floatAnchor, cfg.label, 0, 22);
+    audio.sfx(cfg.type === 'rock' ? 'rock' : 'apple');
   },
 });
 world.trees.forEach((t) => harvest.addTree(t));
@@ -307,6 +379,10 @@ const construction = new ConstructionManager({
   floatText,
 });
 new BuildUI(state, construction);
+state.on('structureAdded', () => {
+  if (!restoring) audio.sfx('build');
+});
+state.on('structureUpgraded', () => audio.sfx('upgrade'));
 
 // Passive mine/blacksmith yield: one global 5s loop over all structures,
 // exactly like the 2D house-yield timer (TECHNICAL_ARCHITECTURE.md §4).
@@ -319,6 +395,7 @@ state.on('produced', ({ structure, label }) => {
 
 // — Overworld combat (Batch 9): black dragons, projectiles, tower defense —
 const projectiles = new ProjectileManager(scene);
+projectiles.onFire = (kind) => audio.sfx(kind);
 const enemies = new EnemyManager({
   scene,
   camera,
@@ -343,16 +420,114 @@ const towers = new TowerDefense({
 // While battle.active the animate loop renders the arena instead of the
 // island and every island system (movement, enemies, decay) is frozen, the
 // 3D equivalent of the 2D scene.pause('MainScene') + launch('BattleScene').
-const battle = new BattleArena(state, { environment: envTexture });
+const battle = new BattleArena(state, { environment: envTexture, audio });
+battle.projectiles.onFire = (kind) => audio.sfx(kind);
+battle.onSceneChange = () => updateMusic();
 new FightUI(state, battle);
+
+// — The Black Room (Batch 11): the 😊 secret scene, now in 3D —
+const blackRoom = new BlackRoom();
+blackRoom.onExit = () => updateMusic();
+document.getElementById('smile-btn').addEventListener('click', () => {
+  if (battle.active || state.isGameOver) return;
+  // Close every open menu first, like the 2D smile button did.
+  document
+    .querySelectorAll('.overlay-panel.open, #backpack-panel.open, #settings-panel.open')
+    .forEach((el) => el.classList.remove('open'));
+  construction.cancelPlacement();
+  blackRoom.enter();
+  audio.sfx('secret');
+  updateMusic();
+});
+
+// One loop per place you can be. Called whenever that changes.
+function updateMusic() {
+  if (state.isGameOver) audio.playMusic(null);
+  else if (blackRoom.active) audio.playMusic('blackroom');
+  else if (battle.active) audio.playMusic('battle');
+  else audio.playMusic('island');
+}
+updateMusic();
+
+// — Autosave (Batch 11) —————————————————————————————————————————
+function saveExtras() {
+  return {
+    worldSeed,
+    timeOfDay: dayNight.time,
+    player: { x: player.position.x, z: player.position.z },
+  };
+}
+
+// Set once the run must never be written again: after "New Game" wipes the
+// file, the reload's own beforeunload would otherwise save the old island
+// straight back over it.
+let savingDisabled = false;
+
+function saveNow() {
+  if (savingDisabled) return false;
+  if (state.isGameOver) return false; // a finished run is not worth restoring
+  const ok = writeSave(state, saveExtras());
+  settings.setSaveNote(
+    ok ? `Saved at ${new Date().toLocaleTimeString()}` : 'Saving unavailable'
+  );
+  return ok;
+}
+
+const settings = new SettingsUI({
+  audio,
+  onSaveNow: () => {
+    const ok = saveNow();
+    if (ok) audio.sfx('save');
+    return ok;
+  },
+  onNewGame: () => {
+    savingDisabled = true;
+    clearInterval(autosaveTimer);
+    clearSave();
+    location.reload();
+  },
+});
+
+let autosaveTimer = setInterval(saveNow, AUTOSAVE_MS);
+// Both hooks matter: beforeunload covers desktop tab closes, visibilitychange
+// covers mobile, where a backgrounded tab may never fire beforeunload at all.
+window.addEventListener('beforeunload', () => {
+  clearInterval(autosaveTimer);
+  audio.dispose();
+  saveNow();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveNow();
+});
+
+// — Restore the run —————————————————————————————————————————————
+// Everything above is subscribed, so applySave() can rebuild the island purely
+// by replaying state events. Floating text is muted for the duration.
+if (save) {
+  restoring = true;
+  try {
+    applySave(state, save);
+  } finally {
+    restoring = false;
+  }
+  // Phillis is already the selection, so re-emit rather than re-select: this
+  // repaints the caretaking panel with her restored stats.
+  state.emit('selection', state.selected);
+}
 
 // Game over freezes the run like the 2D physics.pause() + removeAllEvents():
 // the caretaking/production clocks stop and the animate loop skips gameplay
-// updates (rendering continues under the overlay).
+// updates (rendering continues under the overlay). The save is deleted too, so
+// TRY AGAIN (a page reload) genuinely starts over.
 state.on('gameOver', () => {
   clearInterval(decayTimer);
   clearInterval(productionTimer);
+  clearInterval(autosaveTimer);
+  savingDisabled = true;
+  clearSave();
   construction.cancelPlacement();
+  audio.sfx('gameover');
+  updateMusic();
 });
 
 // Debug hook for automated verification (harmless in normal play).
@@ -368,6 +543,13 @@ window.__game = {
   projectiles,
   battle,
   camera,
+  scene,
+  renderer,
+  dayNight,
+  audio,
+  blackRoom,
+  worldSeed,
+  saveNow,
 };
 
 window.addEventListener('resize', () => {
@@ -376,8 +558,9 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Lightweight FPS readout in the HTML HUD.
+// Lightweight FPS readout + time-of-day clock in the HTML HUD.
 const fpsEl = document.getElementById('fps');
+const clockEl = document.getElementById('clock');
 let frames = 0;
 let fpsTimer = 0;
 
@@ -387,8 +570,13 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
 
-  // Arena battles take over rendering completely; the island freezes
-  // underneath (2D: pause MainScene, launch BattleScene).
+  // The Black Room and arena battles take over rendering completely; the
+  // island freezes underneath (2D: sleep MainScene, launch the other scene).
+  if (blackRoom.active) {
+    blackRoom.update(dt);
+    renderer.render(blackRoom.scene, blackRoom.camera);
+    return;
+  }
   if (battle.active) {
     battle.update(dt);
     renderer.render(battle.scene, battle.camera);
@@ -396,6 +584,7 @@ function animate() {
   }
 
   world.update(time);
+  dayNight.update(dt, player.position);
   if (!state.isGameOver) {
     player.update(dt);
     companions.update(dt, player.position);
@@ -421,6 +610,7 @@ function animate() {
   fpsTimer += dt;
   if (fpsTimer >= 1) {
     fpsEl.textContent = `${Math.round(frames / fpsTimer)} fps`;
+    clockEl.textContent = dayNight.label();
     frames = 0;
     fpsTimer = 0;
   }

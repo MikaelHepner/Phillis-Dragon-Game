@@ -1,8 +1,9 @@
 // Game Over overlay (Batch 9) — the 3D take on the 2D UIScene
 // showGameOverScreen: dark full-screen fade, red GAME OVER title,
 // "Phillis has fainted!", and a green TRY AGAIN button. The 2D button
-// restarted MainScene + UIScene from scratch; with no save system yet
-// (Batch 11), a full page reload is the same fresh start.
+// restarted MainScene + UIScene from scratch; a full page reload is the same
+// fresh start here, because main.js deletes the save file the moment the run
+// ends (Batch 11) — so the reload boots a brand-new island.
 
 export class GameOverUI {
   constructor(state) {

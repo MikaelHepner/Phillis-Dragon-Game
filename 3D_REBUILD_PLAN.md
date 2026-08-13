@@ -193,6 +193,22 @@ verify the "Done when" checklist in the browser, then move to the next batch.
 
 **Prompt:** *"Do Batch 11 of 3D_REBUILD_PLAN.md — save/load, day-night, audio, black room, and performance."*
 
+**Delivered:** `src3d/state/SaveManager.js` (schema v1, 10s autosave + unload + tab-hide,
+load-on-boot, ⚙️ settings panel with Save / New Game), `src3d/DayNightCycle.js` (8-minute
+day, sun orbit, sky/fog/water/env keyframes, stars + moon, HUD clock),
+`src3d/audio/AudioManager.js` (WebAudio-synthesized SFX + three procedural music loops),
+`src3d/blackroom/BlackRoom.js` (😊 secret scene as its own 3D scene), and the performance
+pass. Two deliberate deviations from the bullets above, both to keep existing behaviour:
+
+- **Merged geometry instead of instanced meshes.** Harvesting animates individual trees
+  and rocks, and walls destroy specific scenery objects, so each node needs its own
+  Object3D — InstancedMesh would have meant rewriting the harvest and wall systems. Baking
+  each tree/rock/wall tile into one merged geometry takes the same late-game island from
+  944 visible meshes to ~568 with no behaviour change.
+- **The world is seeded rather than saved.** "Restores your island exactly" needs the
+  scenery layout back too; saving a 32-bit seed and regenerating deterministically is
+  smaller and keeps the save schema close to the documented one.
+
 ---
 
 ## Working rules for every batch
@@ -215,4 +231,4 @@ verify the "Done when" checklist in the browser, then move to the next batch.
 - [x] Batch 8 — Construction & Castle Walls
 - [x] Batch 9 — Overworld Combat
 - [x] Batch 10 — Battle Arena
-- [ ] Batch 11 — Save System & Polish
+- [x] Batch 11 — Save System & Polish

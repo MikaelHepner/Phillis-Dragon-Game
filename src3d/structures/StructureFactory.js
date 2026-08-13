@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Low-poly structure models, built from primitives in code like the rest of
 // the 3D game (no textures — AI_HANDOFF.md: everything is code-driven).
@@ -176,26 +177,31 @@ export function createStructureMesh(kind) {
 
 // — Wall tile: 40×40 footprint (the 2D display size), rook-style merlons.
 // Square footprint means the same model works on all four ring edges with no
-// rotation. Shared geometry across all tiles — a ring can be 40+ segments.
-const WALL_BASE_GEO = new THREE.BoxGeometry(40, 22, 40);
-const WALL_MERLON_GEO = new THREE.BoxGeometry(9, 7, 9);
-const WALL_MERLON_SPOTS = [
-  [-14, -14], [14, -14], [-14, 14], [14, 14], [0, 0],
-];
+// rotation.
+//
+// Batch 11 performance pass: a castle ring is 40+ tiles, and a tile used to be
+// 6 meshes (base + 5 merlons) — 240+ draw calls for one wall. The parts are
+// baked into a single two-slot geometry, built once and shared by every tile,
+// so the whole ring costs one draw call per tile. The tile stays a Group
+// because ConstructionManager scales each one individually as it grows in.
+const WALL_TILE_GEO = (() => {
+  const base = new THREE.BoxGeometry(40, 22, 40).translate(0, 11, 0);
+  const merlonSpots = [[-14, -14], [14, -14], [-14, 14], [14, 14], [0, 0]];
+  const merlons = mergeGeometries(
+    merlonSpots.map(([x, z]) => new THREE.BoxGeometry(9, 7, 9).translate(x, 25.5, z))
+  );
+  const merged = mergeGeometries([base, merlons], true); // slot 0 base, 1 merlons
+  base.dispose();
+  merlons.dispose();
+  return merged;
+})();
 
 export function createWallTile() {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(WALL_BASE_GEO, MAT.stone);
-  base.position.y = 11;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  g.add(base);
-  for (const [x, z] of WALL_MERLON_SPOTS) {
-    const m = new THREE.Mesh(WALL_MERLON_GEO, MAT.stoneDark);
-    m.position.set(x, 25.5, z);
-    m.castShadow = true;
-    g.add(m);
-  }
+  const tile = new THREE.Mesh(WALL_TILE_GEO, [MAT.stone, MAT.stoneDark]);
+  tile.castShadow = true;
+  tile.receiveShadow = true;
+  g.add(tile);
   // Radius 21 at 40-unit spacing: neighbours overlap, so dragons (radius 9)
   // can't slip between tiles, while the 2–3 tile gate stays walkable.
   g.userData.collideRadius = 21;

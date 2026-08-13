@@ -41,13 +41,16 @@
         left: 12px;
         pointer-events: none;
         user-select: none;
-        max-width: 62vw;
+        /* The two top bars are absolutely positioned, so nothing stops them
+           overlapping — they each get a hard share of the width instead.
+           (Batch 11 added a clock chip and a ⚙️ button to the right-hand bar,
+           which is what made the old 62vw start colliding.) */
+        max-width: 46vw;
       }
       #resource-bar {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-bottom: 8px;
       }
       .resource-val { margin-left: 2px; min-width: 1ch; }
       #hint {
@@ -62,6 +65,9 @@
         top: 12px;
         right: 12px;
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 50vw;
         gap: 8px;
         align-items: flex-start;
         user-select: none;
@@ -686,7 +692,14 @@
       body.in-battle #top-right,
       body.in-battle #dragon-panel,
       body.in-battle #place-hint,
-      body.in-battle .island-float { display: none !important; }
+      body.in-battle .island-float,
+      /* …and the Black Room hides everything too (Batch 11). */
+      body.in-blackroom #top-left,
+      body.in-blackroom #top-right,
+      body.in-blackroom #dragon-panel,
+      body.in-blackroom #place-hint,
+      body.in-blackroom #backpack-panel,
+      body.in-blackroom .island-float { display: none !important; }
 
       .fight-tile .store-thumb { cursor: pointer; }
       .fight-select { background: #c0392b; }
@@ -896,10 +909,192 @@
         100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
       }
 
+      /* — Batch 11: smile button, clock, settings, save toast, Black Room — */
+
+      #top-left-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      /* The 2D game's secret-room button: dark disc, gold ring, top-left. */
+      #smile-btn {
+        flex: none;
+        pointer-events: auto;
+        cursor: pointer;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: #3a3a5c;
+        border: 3px solid #ffcc00;
+        color: #fff;
+        font-size: 22px;
+        line-height: 1;
+        padding: 0;
+        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+        transition: transform 0.12s ease, background 0.12s ease;
+      }
+      #smile-btn:hover { background: #5a5a8c; border-color: #ffee55; transform: scale(1.08); }
+      #smile-btn:active { transform: scale(0.94); }
+
+      #clock { font-size: 14px; padding: 4px 10px; pointer-events: none; min-width: 82px; justify-content: center; }
+
+      #settings-btn { cursor: pointer; border: none; font-family: inherit; }
+      #settings-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2); }
+
+      #settings-panel {
+        position: absolute;
+        top: 56px;
+        right: 12px;
+        width: 218px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 4px solid #5a3e2b;
+        border-radius: 18px;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+        padding: 10px 14px 14px;
+        display: none;
+        color: #5a3e2b;
+        z-index: 8;
+      }
+      #settings-panel.open { display: block; }
+      #settings-panel h3 {
+        margin: 2px 0 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 18px;
+      }
+      #settings-close {
+        cursor: pointer;
+        border: none;
+        background: #e5cfa8;
+        border-radius: 8px;
+        font-weight: bold;
+        padding: 2px 8px;
+      }
+      .settings-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 2px;
+        font-size: 16px;
+        border-bottom: 2px dotted rgba(90, 62, 43, 0.25);
+      }
+      .settings-toggle {
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        font-size: 15px;
+        color: #fff;
+        background: #27ae60;
+        border: none;
+        border-radius: 10px;
+        padding: 4px 12px;
+        min-width: 54px;
+      }
+      .settings-toggle.off { background: #9a9a9a; }
+      .settings-btn-row { display: flex; gap: 8px; margin-top: 10px; }
+      .settings-action {
+        flex: 1;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        font-size: 14px;
+        color: #fff;
+        background: #1fb6c9;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 4px;
+      }
+      .settings-action.danger { background: #c0392b; }
+      .settings-note { font-size: 12px; opacity: 0.7; margin-top: 8px; text-align: center; }
+
+      /* Autosave confirmation, bottom-center */
+      #save-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%) translateY(10px);
+        z-index: 30;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+      #save-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      /* The Black Room: DOM half of the secret scene (the 3D half is its own
+         THREE.Scene). Both reveals are timed by BlackRoom.update(). */
+      #blackroom-hud {
+        position: fixed;
+        inset: 0;
+        z-index: 35;
+        display: none;
+        pointer-events: none;
+        font-family: 'Courier New', Courier, monospace;
+      }
+      #blackroom-hud.open { display: block; }
+      #blackroom-text {
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        transform: translate(-50%, -50%);
+        font-size: 30px;
+        letter-spacing: 8px;
+        color: #555;
+        opacity: 0;
+        transition: opacity 2s ease-in;
+      }
+      #blackroom-back {
+        position: absolute;
+        left: 50%;
+        bottom: 42px;
+        transform: translateX(-50%);
+        pointer-events: auto;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 18px;
+        color: #444;
+        background: none;
+        border: none;
+        padding: 8px 16px;
+        opacity: 0;
+        transition: opacity 1.5s ease-in, color 0.2s ease;
+      }
+      #blackroom-back:hover { color: #888; }
+      #blackroom-text.visible, #blackroom-back.visible { opacity: 1; }
+
       @media (max-width: 640px) {
         #dragon-panel { width: 56vw; }
-        #top-left { max-width: 52vw; }
+        #top-left { max-width: 44vw; }
         .hud-chip { font-size: 15px; padding: 5px 9px; }
+      }
+
+      /* Phone-width HUD pass (Batch 11): the top bars are the only things that
+         genuinely break below ~520px — they wrap into the 3D view. Shrink the
+         chips, let the button row wrap, and dock the panels full-width. */
+      @media (max-width: 520px) {
+        /* No room to sit the two bars side by side: the buttons take the full
+           width at the top and the resources tuck in underneath them. */
+        #top-right { left: 12px; max-width: none; gap: 6px; }
+        #top-left { top: 86px; max-width: calc(100vw - 24px); }
+        #hint { display: none; } /* the controls hint eats the whole screen */
+        #smile-btn { width: 36px; height: 36px; font-size: 18px; }
+        #fps, #clock { font-size: 12px; padding: 3px 7px; min-width: 0; }
+        .hud-chip { font-size: 13px; padding: 4px 8px; border-width: 2px; border-radius: 11px; }
+        #dragon-panel { width: auto; right: 12px; padding: 8px 10px; }
+        #dragon-panel .dragon-name { font-size: 15px; }
+        #backpack-panel, #settings-panel {
+          top: auto;
+          bottom: 12px;
+          left: 12px;
+          right: 12px;
+          width: auto;
+          max-height: 52vh;
+          overflow-y: auto;
+          z-index: 12; /* dock over the caretaking panel rather than beside it */
+        }
+        .battle-side { width: 42vw; padding: 7px 9px; }
+        #battle-help { font-size: 14px; }
       }
     </style>
   </head>
@@ -907,22 +1102,44 @@
     <canvas id="game-canvas"></canvas>
 
     <div id="top-left">
-      <div id="resource-bar"></div>
+      <div id="top-left-row">
+        <button id="smile-btn" title="…">😊</button>
+        <div id="resource-bar"></div>
+      </div>
       <span class="hud-chip" id="hint">WASD / Arrows to walk · Walk into 🌳 trees &amp; 🪨 rocks to harvest · Click a dragon to care for it · Click 😈 Black Dragons to attack · Drag to orbit</span>
     </div>
 
     <div id="top-right">
       <span class="hud-chip" id="fps">-- fps</span>
+      <span class="hud-chip" id="clock">☀️ 07:40</span>
       <button class="hud-chip" id="store-btn">🛒 Store</button>
       <button class="hud-chip" id="craft-btn">⚒️ Craft</button>
       <button class="hud-chip" id="build-btn">🏗️ Build</button>
       <button class="hud-chip" id="backpack-btn">🎒 Backpack</button>
+      <button class="hud-chip" id="settings-btn" title="Sound &amp; save">⚙️</button>
     </div>
 
     <div id="backpack-panel">
       <h3>🎒 Backpack <button id="backpack-close">✕</button></h3>
       <ul id="backpack-list"></ul>
       <div id="backpack-cards"></div>
+    </div>
+
+    <div id="settings-panel">
+      <h3>⚙️ Settings <button id="settings-close">✕</button></h3>
+      <div class="settings-row">
+        <span>🔊 Sound</span>
+        <button class="settings-toggle" id="toggle-sound">ON</button>
+      </div>
+      <div class="settings-row">
+        <span>🎵 Music</span>
+        <button class="settings-toggle" id="toggle-music">ON</button>
+      </div>
+      <div class="settings-btn-row">
+        <button class="settings-action" id="save-now">💾 Save</button>
+        <button class="settings-action danger" id="new-game">🆕 New Game</button>
+      </div>
+      <div class="settings-note" id="save-note">Autosaves every 10s</div>
     </div>
 
     <div class="overlay-panel" id="store-panel"></div>
@@ -958,6 +1175,13 @@
       <div class="gameover-sub">Phillis has fainted!</div>
       <button id="gameover-restart">TRY AGAIN</button>
     </div>
+
+    <div id="blackroom-hud">
+      <div id="blackroom-text">...</div>
+      <button id="blackroom-back">← Go Back</button>
+    </div>
+
+    <span class="hud-chip" id="save-toast">💾 Saved</span>
 
     <script type="module" src="/src3d/main.js"></script>
   </body>
