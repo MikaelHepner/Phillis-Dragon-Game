@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { DRAGON_TYPES } from './data/dragonTypes.js';
 import { createDragon } from './dragons/DragonFactory.js';
+import { setRenderStyle } from './dragons/renderStyle.js';
+import { preloadDragonModel } from './dragons/DragonModel.js';
 
 // Dragon gallery debug page: every dragon type from dragonTypes.js in a grid,
 // idling, with name/price labels. Toolbar switches the animation for all;
@@ -21,6 +23,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// Khronos PBR Neutral: rolls off highlights that used to clip to flat white,
+// without the desaturation ACES would cost a deliberately colourful game.
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x3d566e);
@@ -40,6 +46,16 @@ sun.shadow.camera.top = 350;
 sun.shadow.camera.bottom = -350;
 sun.shadow.camera.far = 900;
 scene.add(sun);
+
+// A/B switch between the original faceted low-poly look and the smooth render
+// pass. ?style=old|new preselects one (handy for screenshots).
+let smooth = new URLSearchParams(location.search).get('style') !== 'old';
+
+function applyRenderStyle() {
+  setRenderStyle({ smooth });
+  renderer.toneMapping = smooth ? THREE.NeutralToneMapping : THREE.NoToneMapping;
+  renderer.toneMappingExposure = smooth ? 1.15 : 1;
+}
 
 const rows = Math.ceil(DRAGON_TYPES.length / COLS);
 const gridW = (COLS - 1) * SPACING_X;
@@ -81,28 +97,58 @@ function makeLabelSprite(type) {
   return sprite;
 }
 
-const dragons = [];
-DRAGON_TYPES.forEach((type, i) => {
-  const col = i % COLS;
-  const row = Math.floor(i / COLS);
-  const x = col * SPACING_X - gridW / 2;
-  const z = row * SPACING_Z - gridD / 2;
+// Grid slot for each type — tiles and labels are built once and stay put;
+// only the dragons themselves are rebuilt when the render style flips.
+const slots = DRAGON_TYPES.map((type, i) => ({
+  type,
+  x: (i % COLS) * SPACING_X - gridW / 2,
+  z: Math.floor(i / COLS) * SPACING_Z - gridD / 2,
+}));
 
+for (const { type, x, z } of slots) {
   const tile = new THREE.Mesh(new THREE.CylinderGeometry(26, 28, 1.6, 24), tileMat);
   tile.position.set(x, 0.8, z);
   tile.receiveShadow = true;
   scene.add(tile);
 
-  const dragon = createDragon(type);
-  dragon.group.position.set(x, 1.6, z);
-  // Dragons are modeled facing +z, which is already toward the camera.
-  scene.add(dragon.group);
-  dragons.push(dragon);
-
   const label = makeLabelSprite(type);
   label.position.set(x, 34, z);
   scene.add(label);
+}
+
+let dragons = [];
+let currentAnim = 'idle';
+
+// Tear down the current grid of dragons and build it again under whatever
+// RENDER_STYLE now says. Geometry and materials are per-dragon here (the
+// factory builds them fresh each call), so disposing is safe.
+function spawnDragons() {
+  for (const d of dragons) {
+    scene.remove(d.group);
+    d.group.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+    });
+  }
+
+  dragons = slots.map(({ type, x, z }) => {
+    const dragon = createDragon(type);
+    dragon.group.position.set(x, 1.6, z);
+    // Dragons are modeled facing +z, which is already toward the camera.
+    scene.add(dragon.group);
+    dragon.setAnimation(currentAnim);
+    return dragon;
+  });
+}
+
+// ?dragons=proc shows the procedural dragons instead of the glTF model.
+await preloadDragonModel({
+  enabled: new URLSearchParams(location.search).get('dragons') !== 'proc',
 });
+
+applyRenderStyle();
+spawnDragons();
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 3000);
 camera.position.set(0, 185, gridD / 2 + 265);
@@ -126,8 +172,23 @@ buttons.forEach((btn) => {
       return;
     }
     buttons.forEach((b) => b.classList.toggle('active', b === btn));
+    currentAnim = name;
     dragons.forEach((d) => d.setAnimation(name));
   });
+});
+
+// Render-style A/B: rebuild every dragon under the other look.
+const styleBtn = document.getElementById('style-btn');
+function paintStyleBtn() {
+  styleBtn.textContent = smooth ? '✨ New look' : '🔲 Old look';
+  styleBtn.classList.toggle('active', smooth);
+}
+paintStyleBtn();
+styleBtn.addEventListener('click', () => {
+  smooth = !smooth;
+  applyRenderStyle();
+  spawnDragons();
+  paintStyleBtn();
 });
 
 // Click a dragon → it attacks.

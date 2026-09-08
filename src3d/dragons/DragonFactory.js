@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { RENDER_STYLE } from './renderStyle.js';
+import { createModelDragon, isDragonModelReady } from './DragonModel.js';
 
 // One procedural low-poly dragon, parameterized by a config from
 // src3d/data/dragonTypes.js. Built entirely from primitives — no model files.
@@ -15,10 +17,25 @@ import * as THREE from 'three';
 
 const HURT_COLOR = new THREE.Color(0xff4444);
 
+// Whether this type renders as a smooth creature or keeps the faceted low-poly
+// look. Crystal, glass and origami types stay faceted even when RENDER_STYLE
+// asks for smooth — facets ARE the material for ice, diamond and folded paper.
+function isSmooth(config) {
+  if (!RENDER_STYLE.smooth) return false;
+  const faceted = config.faceted ?? (config.style === 'crystal' || config.style === 'glass');
+  return !faceted;
+}
+
+// Pick a geometry segment count: the original low-poly value, or the higher
+// one when this type is rendering smooth.
+function segCount(config, low, high) {
+  return isSmooth(config) ? high : low;
+}
+
 function makeMaterial(config, colorHex, overrides = {}) {
   const params = {
     color: colorHex,
-    flatShading: true,
+    flatShading: !isSmooth(config),
     roughness: 0.9,
     metalness: 0,
   };
@@ -91,7 +108,11 @@ function buildSpikes(config, bodyMat, parts, rig) {
   const kind = config.spikes ?? 'cones';
   if (kind === 'none') return;
 
-  const spikeMat = makeMaterial(config, config.colors.spikes, config.style === 'glass' || config.style === 'crystal' ? {} : { transparent: false, opacity: 1 });
+  const spikeMat = makeMaterial(config, config.colors.spikes, {
+    // Chiselled shapes read as chiselled only with flat shading.
+    ...(kind === 'crystals' || kind === 'rocks' ? { flatShading: true } : {}),
+    ...(config.style === 'glass' || config.style === 'crystal' ? {} : { transparent: false, opacity: 1 }),
+  });
 
   if (kind === 'bolt') {
     const bolt = new THREE.Mesh(
@@ -130,7 +151,7 @@ function buildSpikes(config, bodyMat, parts, rig) {
     } else if (kind === 'leaves') {
       geo = new THREE.ConeGeometry(1.5, 3.2, 5);
     } else {
-      geo = new THREE.ConeGeometry(1.1, 2.8, 5); // cones + flames
+      geo = new THREE.ConeGeometry(1.1, 2.8, segCount(config, 5, 14)); // cones + flames
     }
     const spike = new THREE.Mesh(geo, spikeMat);
     spike.position.set(0, 15 + (kind === 'crystals' ? 0.6 : 0.4), z);
@@ -334,14 +355,14 @@ class Dragon {
     const hornMat = makeMaterial(config, c.horns, { transparent: false, opacity: 1 });
 
     // — Body —
-    const body = new THREE.Mesh(new THREE.SphereGeometry(6, 10, 8), bodyMat);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(6, segCount(config, 10, 28), segCount(config, 8, 20)), bodyMat);
     body.scale.set(1.05, 0.95, 1.45);
     body.position.y = 10;
     body.castShadow = true;
     rig.add(body);
     parts.body = body;
 
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(5.4, 10, 8), bellyMat);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(5.4, segCount(config, 10, 28), segCount(config, 8, 20)), bellyMat);
     belly.scale.set(0.9, 0.8, 1.25);
     belly.position.set(0, 8.6, 1.2);
     rig.add(belly);
@@ -352,7 +373,7 @@ class Dragon {
     rig.add(head);
     parts.head = head;
 
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(4, 10, 8), bodyMat);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(4, segCount(config, 10, 28), segCount(config, 8, 20)), bodyMat);
     skull.castShadow = true;
     head.add(skull);
 
@@ -373,14 +394,14 @@ class Dragon {
     });
     const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
     for (const side of [-1, 1]) {
-      const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), eyeWhiteMat);
+      const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(1, segCount(config, 8, 18), segCount(config, 6, 14)), eyeWhiteMat);
       eyeWhite.position.set(side * 2.2, 1, 2.4);
       head.add(eyeWhite);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), eyeMat);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.5, segCount(config, 8, 18), segCount(config, 6, 14)), eyeMat);
       pupil.position.set(side * 2.5, 1, 3.1);
       head.add(pupil);
 
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.9, 3.6, 6), hornMat);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.9, 3.6, segCount(config, 6, 16)), hornMat);
       horn.position.set(side * 1.9, 3.4, -1);
       horn.rotation.x = -0.45;
       horn.rotation.z = side * -0.15;
@@ -404,8 +425,8 @@ class Dragon {
 
     // — Legs — (pivots at the hips so rotation.x swings them)
     parts.legs = [];
-    const legGeo = new THREE.CapsuleGeometry(1.5, 3.4, 4, 8);
-    const footGeo = new THREE.SphereGeometry(1.7, 8, 6);
+    const legGeo = new THREE.CapsuleGeometry(1.5, 3.4, segCount(config, 4, 8), segCount(config, 8, 20));
+    const footGeo = new THREE.SphereGeometry(1.7, segCount(config, 8, 18), segCount(config, 6, 14));
     const legDefs = [
       { x: -3.9, z: 4.6, phase: 0 }, // front-left
       { x: 3.9, z: 4.6, phase: Math.PI }, // front-right
@@ -441,7 +462,7 @@ class Dragon {
     for (const def of segDefs) {
       const seg = new THREE.Group();
       seg.position.z = def.z;
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(def.r, 8, 6), bodyMat);
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(def.r, segCount(config, 8, 20), segCount(config, 6, 14)), bodyMat);
       mesh.scale.set(0.9, 0.9, 1.5);
       mesh.castShadow = true;
       seg.add(mesh);
@@ -449,7 +470,7 @@ class Dragon {
       parts.tailSegs.push(seg);
       parent = seg;
     }
-    const tailSpike = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.4, 5), hornMat);
+    const tailSpike = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.4, segCount(config, 5, 14)), hornMat);
     tailSpike.rotation.x = -Math.PI / 2; // point backward (-z)
     tailSpike.position.z = -2.6;
     parent.add(tailSpike);
@@ -563,7 +584,15 @@ class Dragon {
   }
 }
 
-/** Build a dragon from a config entry in src3d/data/dragonTypes.js. */
+/**
+ * Build a dragon from a config entry in src3d/data/dragonTypes.js.
+ *
+ * Once preloadDragonModel() has resolved, this returns the glTF-backed dragon
+ * instead of the procedural one. Both expose the same API (group,
+ * setAnimation, play, update, setArmor), so callers never need to care which
+ * they got — and if the model fails to load the game still runs on these.
+ */
 export function createDragon(config) {
+  if (isDragonModelReady()) return createModelDragon(config);
   return new Dragon(config);
 }

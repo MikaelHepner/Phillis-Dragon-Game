@@ -3,6 +3,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createWorld, randomWorldSeed, WORLD_CENTER } from './world.js';
 import { CameraRig } from './cameraRig.js';
 import { createDragon } from './dragons/DragonFactory.js';
+import { preloadDragonModel } from './dragons/DragonModel.js';
 import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
 import { PlayerController } from './player/PlayerController.js';
 import { CompanionManager } from './companions/CompanionManager.js';
@@ -44,6 +45,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// Khronos PBR Neutral: rolls off highlights that used to clip to flat white,
+// without the desaturation ACES would cost a deliberately colourful game.
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x7ec8e3);
@@ -102,6 +107,13 @@ new Hud(state);
 new StoreUI(state); // dragon store + pack store overlays (Batch 6)
 new CraftingUI(state); // card crafting center overlay (Batch 7)
 new GameOverUI(state); // dark GAME OVER screen + TRY AGAIN (Batch 9)
+
+// The glTF dragon model backs every type once loaded. A failure is not fatal
+// — createDragon() keeps returning procedural dragons — and ?dragons=proc
+// forces the old look for side-by-side comparison.
+await preloadDragonModel({
+  enabled: new URLSearchParams(location.search).get('dragons') !== 'proc',
+});
 
 // Registry of selectable dragons in the world: { id, dragon } keyed for
 // raycasting and for playing per-dragon feedback animations.

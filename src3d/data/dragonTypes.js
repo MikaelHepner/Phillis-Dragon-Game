@@ -14,6 +14,7 @@
 //   opacity   — optional transparency (glass/ice/diamond)
 //   spikes    — back decoration: 'cones' | 'crystals' | 'flames' | 'leaves' | 'bolt' | 'rocks' | 'none'
 //   accessories — extra meshes: 'jacket' | 'mug' | 'can' | 'flower' | 'halo'
+//   faceted   — keep flat shading even when RENDER_STYLE.smooth is on
 //   flatten   — squash on x for the paper dragon
 //   scale     — overall size multiplier
 //   enemy     — true for hostile types
@@ -166,6 +167,7 @@ export const DRAGON_TYPES = [
     element: 'paper',
     colors: { body: 0xf5f1e6, belly: 0xffffff, wings: 0xe8e2d0, horns: 0xd8d0ba, spikes: 0xe8e2d0 },
     style: 'matte',
+    faceted: true, // origami is creased — flat shading is the point
     flatten: 0.55,
     spikes: 'cones',
     accessories: [],

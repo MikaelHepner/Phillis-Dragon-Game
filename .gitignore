@@ -117,3 +117,7 @@ dist
 
 # Windows thumbnail cache
 Thumbs.db
+
+# Raw Meshy exports — the source generations, kept locally but too large for
+# the repo. Only the decimated + WebP-compressed public/models/dragon.glb ships.
+Meshy_AI_*.glb
