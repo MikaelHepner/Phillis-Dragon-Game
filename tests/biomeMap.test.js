@@ -6,6 +6,7 @@ import {
   blobOutline,
   randomPointInBiome,
 } from '../src3d/biomes/biomeMap.js';
+import { WORLD_SIZE } from '../src3d/worldSize.js';
 
 function seq(values) {
   let i = 0;
@@ -13,7 +14,16 @@ function seq(values) {
 }
 
 test('the meadow spawn point is not inside any biome', () => {
-  assert.equal(biomeAt(1000, 1000), null);
+  assert.equal(biomeAt(WORLD_SIZE / 2, WORLD_SIZE / 2), null);
+});
+
+test('the spawn meadow has room to breathe before the first biome', () => {
+  // world.js keeps meadow scenery ≥300 from spawn; the biomes should start
+  // well beyond that so the early game stays meadow-only.
+  for (const b of BIOMES) {
+    const d = Math.hypot(b.cx - WORLD_SIZE / 2, b.cz - WORLD_SIZE / 2) - b.radius;
+    assert.ok(d >= 600, `${b.id} edge is only ${d} from spawn`);
+  }
 });
 
 test('biome centers resolve to their own biome', () => {
@@ -29,11 +39,13 @@ test('jungle and fire regions do not overlap', () => {
 });
 
 test('biome regions stay inside the scatter range with margin', () => {
+  const lo = WORLD_SIZE * 0.06;
+  const hi = WORLD_SIZE * 0.94;
   for (const b of BIOMES) {
-    assert.ok(b.cx - b.radius >= 120, `${b.id} west edge`);
-    assert.ok(b.cx + b.radius <= 1880, `${b.id} east edge`);
-    assert.ok(b.cz - b.radius >= 120, `${b.id} north edge`);
-    assert.ok(b.cz + b.radius <= 1880, `${b.id} south edge`);
+    assert.ok(b.cx - b.radius >= lo, `${b.id} west edge`);
+    assert.ok(b.cx + b.radius <= hi, `${b.id} east edge`);
+    assert.ok(b.cz - b.radius >= lo, `${b.id} north edge`);
+    assert.ok(b.cz + b.radius <= hi, `${b.id} south edge`);
   }
 });
 

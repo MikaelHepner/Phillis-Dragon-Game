@@ -3,25 +3,30 @@
 // scenery inside a region. Kept dependency-free so it can be unit-tested with
 // `node --test`.
 //
-// The island stays a single 2000×2000 landmass (GAME_DESIGN.md §2). Biomes are
-// round-ish patches laid over the meadow: the jungle in the south-east, the
-// volcanic fire biome in the north-west. The meadow keeps the centre, so the
-// player spawn (1000, 1000) and the opening minutes of the game are unchanged.
+// The island stays a single WORLD_SIZE×WORLD_SIZE landmass (GAME_DESIGN.md
+// §2). Biomes are round-ish patches laid over the meadow: the jungle in the
+// south-east, the volcanic fire biome in the north-west. The meadow keeps the
+// centre, so the player spawn and the opening minutes of the game are
+// meadow-only. Positions and radii are fractions of the island so they scale
+// with it (the layout below matches the original 2000² island's 1520/1500
+// r340 jungle and 480/500 r330 fire fields).
+
+import { WORLD_SIZE } from '../worldSize.js';
 
 export const BIOMES = [
   {
     id: 'jungle',
     label: 'Jungle',
-    cx: 1520,
-    cz: 1500,
-    radius: 340,
+    cx: WORLD_SIZE * 0.76,
+    cz: WORLD_SIZE * 0.75,
+    radius: WORLD_SIZE * 0.17,
   },
   {
     id: 'fire',
     label: 'Fire Fields',
-    cx: 480,
-    cz: 500,
-    radius: 330,
+    cx: WORLD_SIZE * 0.24,
+    cz: WORLD_SIZE * 0.25,
+    radius: WORLD_SIZE * 0.165,
   },
 ];
 

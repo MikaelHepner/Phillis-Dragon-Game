@@ -43,14 +43,14 @@ The game is in **Phase 1 (Minimal Playable MVP)**. Core movement, resource colle
 
 ### Map Layout
 
-The game world is a single **flat grass island** of 2000 × 2000 world units.
+The game world is a single **flat grass island** of 10000 × 10000 world units — the original 2D island was 2000 × 2000; the 3D island is 5× wider on each side (25× the area). The scale lives in one place, `src3d/worldSize.js` (`WORLD_SCALE = 5`), and everything that was a proportion of the old map (biome layout, scatter band, enemy spawn bounds) is derived from it. Gameplay distances (aggro range, harvest reach, spawn ring) are absolute and did not change.
 
 | Property | Value |
 |---|---|
-| World size | 2000 × 2000 pixels |
+| World size | 10000 × 10000 world units (2D original: 2000 × 2000) |
 | Visual size | 4000 × 4000 tiling sprite (grass texture at 0.5× tile scale) |
 | Coordinate origin | (0, 0) top-left |
-| Player spawn | Center of world (1000, 1000) |
+| Player spawn | Center of world (5000, 5000) |
 | Camera zoom | 2.0× |
 
 ### Areas / Biomes
@@ -60,8 +60,8 @@ The island is one landmass with **three biomes**. The grass meadow covers the ce
 | Biome | Where | Ground | Scenery | Harvest |
 |---|---|---|---|---|
 | **Grass Meadow** | Everywhere else, including the spawn | Repeating grass tile | Apple trees, rocks | Apples; coins + stone |
-| **Jungle** | South-east, centre (1520, 1500), radius ~340 | Dark mossy green with leaf litter | Palm-style trees with coconuts, ferns (decor) | **Wood** (+1, 3s regrow) — the only wild wood source |
-| **Fire Fields** | North-west, centre (480, 500), radius ~330 | Dark basalt with glowing cracks | Volcano cone with a glowing crater, lava pools, ember rocks, drifting embers | **+2 coins +1 stone** per ember rock (16s regrow) |
+| **Jungle** | South-east, centre (7600, 7500), radius ~1700 | Dark mossy green with leaf litter | Palm-style trees with coconuts, ferns (decor) | **Wood** (+1, 3s regrow) — the only wild wood source |
+| **Fire Fields** | North-west, centre (2400, 2500), radius ~1650 | Dark basalt with glowing cracks | Volcano cone with a glowing crater, lava pools, ember rocks, drifting embers | **+2 coins +1 stone** per ember rock (16s regrow) |
 
 Lava pools are contact hazards like barbed wire: Black Dragons standing in one take damage each tick, while friendly dragons are simply blocked by the pool's collider. The volcano, lava pools, palms and ember rocks all block movement.
 
@@ -71,21 +71,21 @@ Biome layout lives in `src3d/biomes/biomeMap.js`; meshes in `src3d/biomes/biomeS
 
 | Object | Count | Placement | Interaction |
 |---|---|---|---|
-| **Apple Trees** | 30 | Random positions (200–1800 range), at least 300px from center | Walk into to collect 1 apple (2-second cooldown) |
-| **Rocks** | 20 | Random positions (200–1800 range), at least 300px from center | Walk into to destroy and gain 1 coin |
+| **Apple Trees** | 750 (30 × 25, same density as the 2D island) | Random positions in the inner 80% of the island (1000–9000), at least 300 units from center | Walk into to collect 1 apple (2-second cooldown) |
+| **Rocks** | 500 (20 × 25) | Random positions in the inner 80% of the island (1000–9000), at least 300 units from center | Walk into to destroy and gain 1 coin |
 | **Houses** | 0 (player-built) | Spawned 80–160px from player | Solid collision, clickable for upgrades |
 | **Castles** | 0 (player-built) | Spawned 100–200px from player | Solid collision, clickable for upgrades, triggers wall building |
 | **Walls** | 0 (auto-generated) | Built around all buildings when a castle is placed | Solid collision, gate gap at bottom-center |
 
 ### Spawn Locations
 
-- **Player Dragon**: Center (1000, 1000)
+- **Player Dragon**: Center (5000, 5000)
 - **Companion Dragons**: Near center with ±100px random offset
-- **Black Dragons (Enemies)**: Random position at least 400px from player, within world bounds (200–1800)
+- **Black Dragons (Enemies)**: Random point in a ring 400–1400 units from the player, kept inside the scatter band (1000–9000). The ring reproduces the encounter distance the 2D game's "anywhere ≥400 from the player" rule gave on the small island.
 
 ### World Boundaries
 
-Physics world bounds are set to (0, 0, 2000, 2000). All sprites with `collideWorldBounds` enabled cannot leave this area.
+Walkable bounds are (0, 0, 10000, 10000) with a 40-unit margin (`world.bounds`); MovableDragon clamps every dragon inside them.
 
 ### Weather / Time of Day
 
@@ -113,7 +113,7 @@ The **player IS the dragon**. There is no separate human avatar. The first drago
 ### Camera Behavior
 
 - Camera follows the player dragon (Phillis) with smooth lerp (0.1, 0.1).
-- Camera is bounded to world (0, 0, 2000, 2000).
+- Camera follows the player anywhere on the 10000 × 10000 island (no separate camera bounds; the player is clamped instead).
 - Camera zoom is 2.0×.
 
 ---
@@ -474,8 +474,8 @@ If the primary dragon Phillis reaches 0 HP from enemy attacks → Game Over scre
 
 1. Game loads. BootScene preloads all assets, then transitions to MainScene.
 2. MainScene creates the grass world (4000×4000 tiled).
-3. Phillis (the starter dragon) spawns at center (1000, 1000).
-4. 30 apple trees and 20 rocks are scattered across the world.
+3. Phillis (the starter dragon) spawns at center (5000, 5000).
+4. 750 apple trees and 500 rocks are scattered across the world.
 5. Camera follows Phillis at 2× zoom.
 6. UIScene launches as an overlay with all HUD elements.
 7. After 2 seconds, 2 Black Dragons spawn at random distant positions.

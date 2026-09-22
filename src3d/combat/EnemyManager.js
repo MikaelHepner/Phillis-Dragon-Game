@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createDragon } from '../dragons/DragonFactory.js';
 import { DRAGON_TYPES_BY_ID } from '../data/dragonTypes.js';
 import { MovableDragon } from '../entities/MovableDragon.js';
+import { WORLD_SIZE } from '../worldSize.js';
 import {
   ENEMY_ATTACK_DAMAGE,
   PLAYER_ATTACK_DAMAGE,
@@ -22,9 +23,15 @@ const ENEMY = {
   initialDelaySec: 2, // 2 spawn after 2 seconds…
   initialCount: 2,
   spawnIntervalSec: 25, // …then 1 every 25 seconds
-  spawnMin: 200, // random world position range (2D: 200–1800)
-  spawnMax: 1800,
+  spawnMin: WORLD_SIZE * 0.1, // world position range (2D: 200–1800 of 2000)
+  spawnMax: WORLD_SIZE * 0.9,
+  // Enemies spawn in a ring around the player. On the 2D 2000² island a
+  // random point ≥400 from the player landed 400–1400 away in practice; on
+  // the scaled-up island a uniformly random point would almost never come
+  // within aggro range, so the ring reproduces that original encounter
+  // distance directly.
   minPlayerDist: 400, // spawn at least this far from the player
+  maxPlayerDist: 1400,
   aggroRange: 400,
   chaseSpeed: 55,
   stopDist: 55, // 45–55: hold position next to the target
@@ -122,10 +129,18 @@ export class EnemyManager {
     let z;
     let attempts = 0;
     do {
-      x = rand(ENEMY.spawnMin, ENEMY.spawnMax);
-      z = rand(ENEMY.spawnMin, ENEMY.spawnMax);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = rand(ENEMY.minPlayerDist, ENEMY.maxPlayerDist);
+      x = playerPos.x + Math.cos(ang) * dist;
+      z = playerPos.z + Math.sin(ang) * dist;
       attempts++;
-    } while (Math.hypot(x - playerPos.x, z - playerPos.z) < ENEMY.minPlayerDist && attempts < 100);
+    } while (
+      (x < ENEMY.spawnMin || x > ENEMY.spawnMax || z < ENEMY.spawnMin || z > ENEMY.spawnMax) &&
+      attempts < 100
+    );
+    // Player parked in a corner: clamp so a spawn always happens.
+    x = Math.min(ENEMY.spawnMax, Math.max(ENEMY.spawnMin, x));
+    z = Math.min(ENEMY.spawnMax, Math.max(ENEMY.spawnMin, z));
 
     const dragon = createDragon(DRAGON_TYPES_BY_ID.black);
     dragon.group.position.set(x, this.groundY, z);

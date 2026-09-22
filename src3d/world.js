@@ -2,16 +2,25 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { biomeAt } from './biomes/biomeMap.js';
 import { buildBiomes } from './biomes/biomeScenery.js';
+import { WORLD_SIZE, WORLD_SCALE } from './worldSize.js';
 
-// World constants per GAME_DESIGN.md §2 — same coordinate space as the 2D game:
-// x/z in [0, 2000], player spawn at the center (1000, 1000).
-export const WORLD_SIZE = 2000;
+// World constants per GAME_DESIGN.md §2, scaled up from the 2D game's
+// 2000×2000 island by WORLD_SCALE (see worldSize.js): x/z in [0, WORLD_SIZE],
+// player spawn at the centre.
+export { WORLD_SIZE, WORLD_SCALE };
 export const WORLD_CENTER = new THREE.Vector3(WORLD_SIZE / 2, 0, WORLD_SIZE / 2);
 
-const TREE_COUNT = 30;
-const ROCK_COUNT = 20;
-const SPAWN_MIN = 200;
-const SPAWN_MAX = 1800;
+// Scatter counts grow with the island's *area* so the meadow stays as dense
+// as the original 30 trees / 20 rocks on 2000², rather than 50 objects lost
+// on a map 25× the size. Only objects in the camera frustum are drawn, so the
+// per-frame cost tracks what is on screen, not the total.
+const TREE_COUNT = 30 * WORLD_SCALE * WORLD_SCALE;
+const ROCK_COUNT = 20 * WORLD_SCALE * WORLD_SCALE;
+// The 2D 200–1800 scatter band, as a proportion of the island.
+const SPAWN_MIN = WORLD_SIZE * 0.1;
+const SPAWN_MAX = WORLD_SIZE * 0.9;
+// Kept absolute: the first tree should still be a few seconds' walk from
+// spawn, not scaled out to a 1500-unit empty circle.
 const MIN_DIST_FROM_CENTER = 300;
 
 // Every random choice in the island — scatter positions, canopy rotations,
@@ -32,7 +41,7 @@ export function randomWorldSeed() {
   return Math.floor(Math.random() * 0xffffffff);
 }
 
-// Random scatter position per GAME_DESIGN.md §2: 200–1800 range, ≥300 from center.
+// Random scatter position per GAME_DESIGN.md §2: inner 80% of the island, ≥300 from center.
 function randomSpawnPosition(rng) {
   for (;;) {
     const x = SPAWN_MIN + rng() * (SPAWN_MAX - SPAWN_MIN);
@@ -116,7 +125,7 @@ function buildWater(scene) {
 }
 
 // Shared geometry/materials — one copy reused across every tree/rock so the
-// 30 trees + 20 rocks don't each allocate their own buffers.
+// hundreds of trees and rocks don't each allocate their own buffers.
 const TRUNK_GEO = new THREE.CylinderGeometry(2.4, 3.4, 16, 7);
 const TRUNK_MAT = new THREE.MeshLambertMaterial({ color: 0x8a5a2b, flatShading: true });
 const LEAF_MAT = new THREE.MeshLambertMaterial({ color: 0x37a446, flatShading: true });
@@ -139,8 +148,9 @@ const LEAF_BLOBS = [
 // Merging rather than InstancedMesh is deliberate: harvesting animates
 // individual trees and rocks (apples shrink out, rocks crumble and regrow) and
 // walls destroy specific scenery objects, all of which want a real Object3D
-// per node. At 50 objects, merging captures nearly all of the win with none of
-// the bookkeeping.
+// per node. Merging captures nearly all of the win with none of the
+// bookkeeping, and frustum culling keeps the draw-call count tied to what is
+// on screen rather than to the island's total.
 function buildTree({ x, z }, rng) {
   const tree = new THREE.Group();
 

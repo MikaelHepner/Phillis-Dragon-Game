@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BIOMES, blobOutline, randomPointInBiome } from './biomeMap.js';
+import { WORLD_SCALE } from '../worldSize.js';
 
 // Biome scenery: the ground patches, plants, rocks, lava and ambience that turn
 // two corners of the meadow into a jungle and a volcanic fire field. Layout
@@ -11,24 +12,32 @@ import { BIOMES, blobOutline, randomPointInBiome } from './biomeMap.js';
 // hoisted to module scope, and each object's parts are baked into as few
 // meshes as the harvest animations allow.
 
+// Each biome's area grows with the square of the island scale, so object
+// counts do too — the same density the biomes were tuned at on the 2000²
+// island. Individual object sizes (trees, ferns, pools) stay the same; only
+// the volcano, a landmark meant to be seen from across the biome, grows.
+const AREA_SCALE = WORLD_SCALE * WORLD_SCALE;
+
 const JUNGLE = {
-  treeCount: 16,
-  fernCount: 26,
+  treeCount: 16 * AREA_SCALE,
+  fernCount: 26 * AREA_SCALE,
   groundY: 0.35,
 };
 
 const FIRE = {
-  emberRockCount: 11,
-  lavaPoolCount: 4,
+  emberRockCount: 11 * AREA_SCALE,
+  lavaPoolCount: 4 * AREA_SCALE,
   groundY: 0.35,
-  volcanoRadius: 120,
-  volcanoHeight: 105,
+  volcanoRadius: 120 * WORLD_SCALE,
+  volcanoHeight: 105 * WORLD_SCALE * 0.8,
   // Lava contact damage — a touch weaker than barbed wire (5 HP per 0.8s) but
   // covering a much bigger footprint, so it still shreds a black dragon that
   // wanders through. Only enemies take hazard damage (EnemyManager); friendlies
   // are merely kept out by the matching collider.
   lava: { damage: 4, tickSec: 0.7, label: '🔥 Lava!' },
-  emberCount: 140,
+  // Embers are one Points cloud updated in JS every frame, so they scale
+  // linearly rather than with area to keep that loop cheap.
+  emberCount: 140 * WORLD_SCALE,
   emberRise: 70,
 };
 
