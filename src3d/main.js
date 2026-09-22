@@ -75,9 +75,10 @@ const worldSeed = save?.worldSeed ?? randomWorldSeed();
 
 const world = createWorld(scene, worldSeed);
 const { colliders, bounds } = world;
-// Contact-damage zones, shared the same way `colliders` is: the
-// ConstructionManager fills it (barbed wire) and the EnemyManager reads it.
-const hazards = [];
+// Contact-damage zones, shared the same way `colliders` is: the world seeds it
+// with the fire biome's lava pools, the ConstructionManager adds barbed wire,
+// and the EnemyManager reads it.
+const hazards = [...world.lavaHazards];
 
 // Sun/sky/water animation + the player-following shadow frustum.
 const dayNight = new DayNightCycle({
@@ -378,17 +379,20 @@ state.on('cardGiven', ({ card, dragon, resource }) => {
   }, GIVE_TICK_MS);
 });
 
-// — Harvesting: apples from trees, coins + stone from rocks (Batch 5) —
+// — Harvesting: apples from trees, coins + stone from rocks (Batch 5), wood
+// from jungle palms and double coins from ember rocks (biomes) —
 const harvest = new HarvestManager({
   camera,
   onHarvest(node, cfg) {
     for (const y of cfg.yields) state.addResource(y.res, y.amount);
     floatText(() => node.floatAnchor, cfg.label, 0, 22);
-    audio.sfx(cfg.type === 'rock' ? 'rock' : 'apple');
+    audio.sfx(cfg.sfx);
   },
 });
 world.trees.forEach((t) => harvest.addTree(t));
 world.rocks.forEach((r) => harvest.addRock(r));
+world.jungleTrees.forEach((t) => harvest.addJungleTree(t));
+world.emberRocks.forEach((r) => harvest.addEmberRock(r));
 
 // — Construction (Batch 8): ghost placement, structures, defensive walls —
 const construction = new ConstructionManager({

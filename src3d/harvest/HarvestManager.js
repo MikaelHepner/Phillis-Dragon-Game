@@ -22,6 +22,7 @@ const TREE = {
   yields: [{ res: 'apples', amount: 1 }],
   label: '+1 🍎',
   floatHeight: 58,
+  sfx: 'apple',
 };
 
 const ROCK = {
@@ -35,6 +36,36 @@ const ROCK = {
   ],
   label: '+1 🪙  +1 🪨',
   floatHeight: 26,
+  sfx: 'rock',
+};
+
+// Biome nodes. Jungle palms are the island's only wild source of wood (the
+// meadow gives none; otherwise it's blacksmiths or gift cards), which is what
+// makes the trek out to the jungle worth it. Ember rocks pay double coins for
+// braving the lava, and regrow slower than meadow rocks.
+const JUNGLE_TREE = {
+  type: 'jungleTree',
+  harvestRadius: 46,
+  cooldownMs: 3000,
+  depletes: false,
+  yields: [{ res: 'wood', amount: 1 }],
+  label: '+1 🪵',
+  floatHeight: 64,
+  sfx: 'apple',
+};
+
+const EMBER_ROCK = {
+  type: 'emberRock',
+  harvestRadius: 42,
+  cooldownMs: 16000,
+  depletes: true,
+  yields: [
+    { res: 'coins', amount: 2 },
+    { res: 'stone', amount: 1 },
+  ],
+  label: '+2 🪙  +1 🪨',
+  floatHeight: 26,
+  sfx: 'rock',
 };
 
 // Easings for the pop / crumble juice.
@@ -54,7 +85,9 @@ class HarvestNode {
     this.ready = true;
     this.timerMs = 0; // countdown until ready again
     this.baseScale = object.scale.x;
-    this.applesGroup = object.userData.applesGroup || null;
+    // The pickable part that hides on harvest and pops back on regrow: apples
+    // on a meadow tree, coconuts on a jungle palm.
+    this.applesGroup = object.userData.fruitGroup || object.userData.applesGroup || null;
     this._tween = null; // { obj, from, to, t, dur, ease }
     // Screen anchor for the floating "+1" text (world-space, height baked in).
     this.floatAnchor = new THREE.Vector3(this.x, cfg.floatHeight, this.z);
@@ -132,6 +165,12 @@ export class HarvestManager {
   }
   addRock(object) {
     this.nodes.push(new HarvestNode(object, ROCK));
+  }
+  addJungleTree(object) {
+    this.nodes.push(new HarvestNode(object, JUNGLE_TREE));
+  }
+  addEmberRock(object) {
+    this.nodes.push(new HarvestNode(object, EMBER_ROCK));
   }
 
   /**

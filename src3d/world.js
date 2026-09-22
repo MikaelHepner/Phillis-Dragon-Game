@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { biomeAt } from './biomes/biomeMap.js';
+import { buildBiomes } from './biomes/biomeScenery.js';
 
 // World constants per GAME_DESIGN.md §2 — same coordinate space as the 2D game:
 // x/z in [0, 2000], player spawn at the center (1000, 1000).
@@ -253,21 +255,34 @@ export function createWorld(scene, seed = randomWorldSeed()) {
   // Each is a circle on the ground plane: { x, z, radius }.
   const colliders = [];
 
+  // Meadow scatter runs first and consumes the rng exactly as it did before
+  // biomes existed, so a saved seed still puts every meadow tree and rock where
+  // the player remembers it. Anything that lands inside a biome patch is
+  // built (to keep the rng sequence intact) and then thrown away — the biome
+  // fills that ground with its own scenery afterwards.
+  const place = (list, object) => {
+    if (biomeAt(object.position.x, object.position.z)) {
+      disposeMeshes(object);
+      return;
+    }
+    list.push(object);
+    scene.add(object);
+    colliders.push({ x: object.position.x, z: object.position.z, radius: object.userData.collideRadius });
+  };
+
   const trees = [];
   for (let i = 0; i < TREE_COUNT; i++) {
-    const tree = buildTree(randomSpawnPosition(rng), rng);
-    trees.push(tree);
-    scene.add(tree);
-    colliders.push({ x: tree.position.x, z: tree.position.z, radius: tree.userData.collideRadius });
+    place(trees, buildTree(randomSpawnPosition(rng), rng));
   }
 
   const rocks = [];
   for (let i = 0; i < ROCK_COUNT; i++) {
-    const rock = buildRock(randomSpawnPosition(rng), rng);
-    rocks.push(rock);
-    scene.add(rock);
-    colliders.push({ x: rock.position.x, z: rock.position.z, radius: rock.userData.collideRadius });
+    place(rocks, buildRock(randomSpawnPosition(rng), rng));
   }
+
+  // Jungle (south-east) and fire fields (north-west) — see biomes/.
+  const biomes = buildBiomes(scene, rng);
+  colliders.push(...biomes.colliders);
 
   return {
     seed,
@@ -276,12 +291,26 @@ export function createWorld(scene, seed = randomWorldSeed()) {
     water,
     trees,
     rocks,
+    jungleTrees: biomes.jungleTrees,
+    emberRocks: biomes.emberRocks,
+    // Lava pools burn Black Dragons on contact. main.js merges these into the
+    // shared hazards list the ConstructionManager and EnemyManager use.
+    lavaHazards: biomes.hazards,
     colliders,
     // Walkable bounds: keep entities a margin inside the ground plane edge.
     bounds: { size: WORLD_SIZE, margin: 40 },
     update(time) {
       // Gentle tide so the water edge feels alive.
       water.position.y = -4 + Math.sin(time * 0.8) * 0.6;
+      biomes.update(time);
     },
   };
+}
+
+// Free the GPU buffers of a scenery object that never made it into the scene.
+// Materials are module-level and shared, so only geometries are released.
+function disposeMeshes(object) {
+  object.traverse((o) => {
+    if (o.isMesh) o.geometry.dispose();
+  });
 }

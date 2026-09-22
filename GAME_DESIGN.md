@@ -55,7 +55,17 @@ The game world is a single **flat grass island** of 2000 × 2000 world units.
 
 ### Areas / Biomes
 
-There is only **one biome**: grass meadow. The entire world is covered with a single repeating grass tile.
+The island is one landmass with **three biomes**. The grass meadow covers the centre and most of the island; two biome patches sit in opposite corners, so the player spawn and the early game are meadow-only and the biomes are something to walk out and discover.
+
+| Biome | Where | Ground | Scenery | Harvest |
+|---|---|---|---|---|
+| **Grass Meadow** | Everywhere else, including the spawn | Repeating grass tile | Apple trees, rocks | Apples; coins + stone |
+| **Jungle** | South-east, centre (1520, 1500), radius ~340 | Dark mossy green with leaf litter | Palm-style trees with coconuts, ferns (decor) | **Wood** (+1, 3s regrow) — the only wild wood source |
+| **Fire Fields** | North-west, centre (480, 500), radius ~330 | Dark basalt with glowing cracks | Volcano cone with a glowing crater, lava pools, ember rocks, drifting embers | **+2 coins +1 stone** per ember rock (16s regrow) |
+
+Lava pools are contact hazards like barbed wire: Black Dragons standing in one take damage each tick, while friendly dragons are simply blocked by the pool's collider. The volcano, lava pools, palms and ember rocks all block movement.
+
+Biome layout lives in `src3d/biomes/biomeMap.js`; meshes in `src3d/biomes/biomeScenery.js`. Meadow scenery that would fall inside a biome patch is dropped, and the meadow scatter uses the same seeded sequence as before, so existing saves keep their meadow layout.
 
 ### Environmental Objects
 

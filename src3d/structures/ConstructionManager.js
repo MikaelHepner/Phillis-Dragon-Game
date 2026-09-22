@@ -54,7 +54,7 @@ export class ConstructionManager {
    * @param {Array} opts.colliders  shared { x, z, radius } list (world + movers)
    * @param {Array} opts.hazards    shared contact-damage list, read by EnemyManager
    * @param {object} opts.bounds    { size, margin }
-   * @param {object} opts.world     createWorld() handles ({ trees, rocks })
+   * @param {object} opts.world     createWorld() handles ({ trees, rocks, jungleTrees, emberRocks })
    * @param {HarvestManager} opts.harvest  to retire nodes walls destroy
    * @param {() => THREE.Vector3[]} opts.getDragonPositions  all friendly dragons
    * @param {Function} opts.floatText  main.js floating-text helper
@@ -350,8 +350,7 @@ export class ConstructionManager {
   #spawnWallTile({ x, z }, delayMs) {
     // Destroy overlapping trees/rocks (2D spawnWallTile, radius 30) so the
     // ring never fuses with scenery. Retire their colliders + harvest nodes.
-    this.#clearScenery(this.world.trees, x, z);
-    this.#clearScenery(this.world.rocks, x, z);
+    this.#clearAllScenery(x, z);
 
     const group = createWallTile();
     group.position.set(x, 0, z);
@@ -417,8 +416,7 @@ export class ConstructionManager {
     if (!this.state.hasGraben || !this.wallRing) return;
 
     this.#grabenPositions().forEach((pos, index) => {
-      this.#clearScenery(this.world.trees, pos.x, pos.z, GRABEN.clearRadius);
-      this.#clearScenery(this.world.rocks, pos.x, pos.z, GRABEN.clearRadius);
+      this.#clearAllScenery(pos.x, pos.z, GRABEN.clearRadius);
 
       const group = createGrabenTile();
       group.position.set(pos.x, 0, pos.z);
@@ -554,6 +552,14 @@ export class ConstructionManager {
   #removeTile(tile) {
     this.#removeGroup(tile.group);
     if (tile.collider) this.#unlist(this.colliders, tile.collider);
+  }
+
+  // Every harvestable scenery list the world exposes — meadow and biome alike.
+  #clearAllScenery(x, z, radius = WALL.clearRadius) {
+    const w = this.world;
+    for (const list of [w.trees, w.rocks, w.jungleTrees, w.emberRocks]) {
+      if (list) this.#clearScenery(list, x, z, radius);
+    }
   }
 
   #clearScenery(list, x, z, radius = WALL.clearRadius) {
