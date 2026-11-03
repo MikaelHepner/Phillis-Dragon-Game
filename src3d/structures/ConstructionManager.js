@@ -5,7 +5,21 @@ import {
   createBarbedWire,
   createGrabenTile,
   createLabelSprite,
+  createStreet,
+  disposeStreet,
+  setStreetlightGlow,
+  CITY_VARIANTS,
 } from './StructureFactory.js';
+import {
+  CITY,
+  plainHouses,
+  plotPosition,
+  streetSpan,
+  streetlightSpots,
+  isOnStreet,
+  findCitySite,
+  allocatePlots,
+} from './CityPlan.js';
 import {
   WALL,
   BARBED_WIRE,
@@ -45,6 +59,11 @@ const GHOST_INVALID = new THREE.MeshLambertMaterial({
   depthWrite: false,
 });
 
+// The founding moment: houses rise up the street one after another.
+const CITY_RISE_STAGGER_MS = 120;
+const CITY_RISE_SEC = 0.6;
+const STREETLIGHT_FADE_SEC = 1.5;
+
 export class ConstructionManager {
   /**
    * @param {object} opts
@@ -78,6 +97,9 @@ export class ConstructionManager {
     this.wallRing = null; // { left, right, top, bottom, midX } — outer defences hang off this
     this.growing = []; // staggered scale-in queue shared by walls, graben, wire
     this.tweens = []; // { group, fromScale(Vector3), toScale, t, dur, onDone }
+    this.street = null; // the main street's THREE.Group, once a city exists
+    this.streetlights = []; // { x, z } world positions of the lights on it
+    this.streetGlow = 0; // 0 = lamps off, 1 = fully lit
 
     // Placement mode state.
     this.placing = null; // building def from data/structures.js, or null
@@ -110,9 +132,22 @@ export class ConstructionManager {
     state.on('grabenDug', () => this.#rebuildGraben());
     // A restored save has already rebuilt the wall ring by the time this fires.
     state.on('defencesRestored', () => {
+      if (state.city) this.#rebuildStreet();
+      // Walls were drawn as each castle loaded, before any buildings saved after
+      // it. Around a city that can leave the ring cutting through the street, so
+      // redraw it now that everything is back. (This reseats the outer defences.)
+      if (state.city && this.wallRing) {
+        this.#rebuildWalls();
+        return;
+      }
       this.#rebuildGraben();
       this.#relineBarbedWire();
     });
+    state.on('structureBuilt', (s) => this.#onStructureBuilt(s));
+    state.on('cityFounded', () => this.#onCityFounded());
+    state.on('cityJoined', (s) => this.#onCityJoined(s));
+    // A save from before cities existed may already hold ten houses.
+    state.on('loaded', () => this.#tryFoundCity());
   }
 
   // — Placement mode ————————————————————————————————————————————
@@ -159,6 +194,8 @@ export class ConstructionManager {
     for (const c of this.colliders) {
       if (Math.hypot(x - c.x, z - c.z) < c.radius + r) return false;
     }
+    // Off the road: it has no colliders, since dragons need to walk on it.
+    if (this.state.city && isOnStreet(this.state.city, this.#cityPlots(), x, z, r)) return false;
     // Clear of every friendly dragon (2D: 85 for houses, 100 for castles).
     for (const p of this.getDragonPositions()) {
       if (Math.hypot(x - p.x, z - p.z) < this.placing.minDragonDist) return false;
@@ -236,10 +273,16 @@ export class ConstructionManager {
     // An upgraded structure shows its class model — the 3D reading of the 2D
     // tint+label change. Castles keep their fortress model (a castle-sized
     // mine would read as a downgrade); they get the class tint instead.
-    const kind = s.type === 'castle' ? 'castle' : s.upgradeType || s.type;
+    const inCity = s.cityPlot !== undefined;
+    const home = inCity ? `city_${s.cityPlot % CITY_VARIANTS}` : s.type;
+    const kind = s.type === 'castle' ? 'castle' : s.upgradeType || home;
     const group = createStructureMesh(kind);
     if (s.type === 'castle' && s.upgradeType) this.#tint(group, UPGRADES_BY_ID[s.upgradeType].tint);
     group.position.set(s.x, 0, s.z);
+    // Models face +z, which on the south side would turn their backs on the road.
+    if (inCity && plotPosition(this.state.city, s.cityPlot).side === 'south') {
+      group.rotation.y = Math.PI;
+    }
     group.userData.structureId = s.id;
     const label = createLabelSprite(structureLabel(s));
     label.position.y = group.userData.height + 10;
@@ -291,6 +334,133 @@ export class ConstructionManager {
     // (scaleX 0.25 / scaleY 0.15 yoyo) — rise from squashed to full.
     this.#tween(record.group, new THREE.Vector3(1.3, 0.15, 1.3), new THREE.Vector3(1, 1, 1), 0.35);
     this.floatText(() => record.anchor, `⬆️ Upgraded to ${structureLabel(s)}!`, 20);
+  }
+
+  // — City: ten plain houses gather into one main street ————————————————
+  // GameState decides what is true (who stands on which plot); this section works
+  // out where the street can go and moves the meshes, colliders and walls to match.
+
+  #cityPlots() {
+    return this.state.structures.filter((s) => s.cityPlot !== undefined).map((s) => s.cityPlot);
+  }
+
+  // What the city must build around. Trees and rocks aren't here because they get
+  // cleared. Plain houses aren't here because they are the ones moving.
+  #cityObstacles() {
+    const standing = this.state.structures
+      .filter((s) => s.type !== 'house' || s.upgradeType)
+      .map((s) => this.records.get(s.id)?.collider)
+      .filter(Boolean);
+    return [...(this.world.fixedObstacles ?? []), ...standing];
+  }
+
+  #onStructureBuilt(s) {
+    if (s.type !== 'house') return;
+    if (!this.state.city) {
+      this.#tryFoundCity(s);
+      return;
+    }
+    const [plot] = allocatePlots(
+      this.state.city,
+      1,
+      this.#cityPlots(),
+      this.#cityObstacles(),
+      this.bounds
+    );
+    // No room left on the street: the house simply stays where it was placed.
+    if (plot !== undefined) this.state.joinCity(s, plot);
+  }
+
+  /** Found the city if there are enough houses, centred as near `around` as fits. */
+  #tryFoundCity(around) {
+    if (this.state.city) return;
+    const houses = plainHouses(this.state.structures);
+    if (houses.length < CITY.threshold) return;
+    const obstacles = this.#cityObstacles();
+    const site = findCitySite(around ?? houses[houses.length - 1], obstacles, this.bounds);
+    if (!site) return; // nothing fits yet; the next house built tries again
+    const plots = allocatePlots(site, houses.length, [], obstacles, this.bounds);
+    this.state.foundCity(site.x, site.z, plots);
+  }
+
+  #onCityFounded() {
+    const gathered = this.state.structures.filter((s) => s.cityPlot !== undefined);
+    gathered.forEach((s, i) => this.#gather(s, i * CITY_RISE_STAGGER_MS));
+    this.#rebuildStreet();
+    if (this.wallRing) this.#rebuildWalls(); // the ring wraps every building, wherever it went
+
+    const { x, z } = this.state.city;
+    const banner = new THREE.Vector3(x, 110, z);
+    this.floatText(() => banner, '🏙️ City Founded!', 20, 34);
+  }
+
+  #onCityJoined(s) {
+    this.#gather(s, 0);
+    this.#rebuildStreet();
+    const ring = this.wallRing;
+    if (!ring) return;
+    const pad = WALL.padding;
+    const outside =
+      s.x < ring.left + pad || s.x > ring.right - pad || s.z < ring.top + pad || s.z > ring.bottom - pad;
+    if (outside) this.#rebuildWalls();
+  }
+
+  // Shrink the old model away, then raise the new one on its plot. The entry has
+  // already moved, so the collider and float-text anchor jump straight there.
+  #gather(s, delayMs) {
+    const record = this.records.get(s.id);
+    if (!record) return;
+    const old = record.group;
+    this.#tween(old, old.scale.clone(), new THREE.Vector3(0.01, 0.01, 0.01), 0.3, () => {
+      this.scene.remove(old);
+    });
+
+    record.group = this.#buildGroupFor(s);
+    this.scene.add(record.group);
+    this.#grow(record.group, delayMs, CITY_RISE_SEC);
+
+    record.collider.x = s.x;
+    record.collider.z = s.z;
+    record.collider.radius = record.group.userData.collideRadius;
+    record.anchor.set(s.x, record.group.userData.height, s.z);
+  }
+
+  #rebuildStreet() {
+    if (this.street) {
+      this.scene.remove(this.street);
+      disposeStreet(this.street);
+    }
+    const city = this.state.city;
+    const plots = this.#cityPlots();
+    const { minX, maxX } = streetSpan(city, plots);
+    this.streetlights = streetlightSpots(city, plots);
+
+    const midX = (minX + maxX) / 2;
+    this.street = createStreet(
+      maxX - minX,
+      this.streetlights.map((l) => ({ x: l.x - midX, z: l.z - city.z }))
+    );
+    this.street.position.set(midX, 0, city.z);
+    this.scene.add(this.street);
+
+    // Clear the whole strip of trees and rocks. A restored island needs this too,
+    // because its scenery regrows from the world seed.
+    const reach = CITY.rowOffset + CITY.buildingRadius;
+    for (let x = minX; x <= maxX; x += 40) {
+      for (let z = -reach; z <= reach; z += 44) {
+        this.#clearAllScenery(x, city.z + z, 40);
+      }
+    }
+  }
+
+  #updateStreetlights(dt, night) {
+    const target = night ? 1 : 0;
+    if (this.streetGlow === target) return;
+    const step = dt / STREETLIGHT_FADE_SEC;
+    this.streetGlow = night
+      ? Math.min(1, this.streetGlow + step)
+      : Math.max(0, this.streetGlow - step);
+    setStreetlightGlow(this.streetGlow);
   }
 
   // — Defensive wall ring (2D buildWallAroundBuildings, verbatim port) ————
@@ -557,7 +727,7 @@ export class ConstructionManager {
   // Every harvestable scenery list the world exposes — meadow and biome alike.
   #clearAllScenery(x, z, radius = WALL.clearRadius) {
     const w = this.world;
-    for (const list of [w.trees, w.rocks, w.jungleTrees, w.emberRocks]) {
+    for (const list of [w.trees, w.rocks, w.jungleTrees, w.emberRocks, w.fishingSpots]) {
       if (list) this.#clearScenery(list, x, z, radius);
     }
   }
@@ -588,7 +758,9 @@ export class ConstructionManager {
     this.growing.push({ group, delaySec: delayMs / 1000, t: 0, dur, onGrown });
   }
 
-  update(dt) {
+  update(dt, night = false) {
+    this.#updateStreetlights(dt, night);
+
     for (let i = this.tweens.length - 1; i >= 0; i--) {
       const tw = this.tweens[i];
       tw.t += dt;

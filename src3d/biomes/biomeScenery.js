@@ -3,8 +3,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BIOMES, blobOutline, randomPointInBiome } from './biomeMap.js';
 import { WORLD_SCALE } from '../worldSize.js';
 
-// Biome scenery: the ground patches, plants, rocks, lava and ambience that turn
-// two corners of the meadow into a jungle and a volcanic fire field. Layout
+// Biome scenery: the ground patches, plants, rocks, lava, water and ambience
+// that turn three corners of the meadow into a jungle, a volcanic fire field
+// and a lagoon. Layout
 // math lives in biomeMap.js; this file only builds meshes.
 //
 // Same conventions as world.js: everything random goes through the seeded rng
@@ -39,6 +40,19 @@ const FIRE = {
   // linearly rather than with area to keep that loop cheap.
   emberCount: 140 * WORLD_SCALE,
   emberRise: 70,
+};
+
+const LAGOON = {
+  groundY: 0.35,
+  // The lake fills the middle of the lagoon (as a fraction of the biome
+  // radius); the sand shore is the ring between it and the biome edge.
+  lakeRadius: 0.48,
+  // Only Water Dragons swim (MovableDragon reads swimmableBy); everyone else
+  // walks the shore. Enemies are blocked too, so the lake is also a moat.
+  swimmableBy: 'water',
+  fishingSpotCount: 2 * AREA_SCALE,
+  reedCount: 30 * AREA_SCALE,
+  lilyPadCount: 22 * AREA_SCALE,
 };
 
 // — Ground textures ———————————————————————————————————————————————
@@ -140,6 +154,45 @@ function makeFireTexture(rng) {
       for (const [px, py] of pts.slice(1)) ctx.lineTo(px, py);
       ctx.stroke();
     }
+  }
+  return finishTexture(canvas, 100);
+}
+
+function makeSandTexture(rng) {
+  const size = 256;
+  const canvas = makeCanvas(size);
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#d8c08a';
+  ctx.fillRect(0, 0, size, size);
+
+  // Grain speckle.
+  const shades = ['#cfb57e', '#e2cc98', '#c7ad74', '#e8d6a6'];
+  for (let i = 0; i < 1600; i++) {
+    ctx.fillStyle = shades[(rng() * shades.length) | 0];
+    ctx.fillRect(rng() * size, rng() * size, 1 + rng() * 3, 1 + rng() * 3);
+  }
+  // Damp patches left by the tide.
+  ctx.fillStyle = 'rgba(150, 125, 80, 0.22)';
+  for (let i = 0; i < 14; i++) {
+    ctx.beginPath();
+    ctx.ellipse(rng() * size, rng() * size, 8 + rng() * 14, 4 + rng() * 8, rng() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Wind ripples: short shallow arcs.
+  ctx.strokeStyle = 'rgba(170, 145, 95, 0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 60; i++) {
+    ctx.beginPath();
+    ctx.arc(rng() * size, rng() * size, 6 + rng() * 6, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.stroke();
+  }
+  // Shells: tiny pale ovals.
+  for (let i = 0; i < 26; i++) {
+    ctx.fillStyle = rng() < 0.5 ? '#f4e6d4' : '#e9b8a4';
+    ctx.beginPath();
+    ctx.ellipse(rng() * size, rng() * size, 1.6 + rng(), 1 + rng() * 0.6, rng() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
   }
   return finishTexture(canvas, 100);
 }
@@ -469,7 +522,19 @@ function buildVolcano(biome, rng) {
   group.position.set(biome.cx, 0, biome.cz);
   group.userData.lavaMaterials = [craterMat, streakMat];
   group.userData.glow = glow;
-  return { group, collider: { x: biome.cx, z: biome.cz, radius: R * 0.92 } };
+  // Fire dragons shrug off the heat and walk straight up the slopes, so the
+  // collider also describes the cone: MovableDragon skips it for a matching
+  // element and reads the surface height instead (see coneHeightAt).
+  return {
+    group,
+    collider: {
+      x: biome.cx,
+      z: biome.cz,
+      radius: R * 0.92,
+      climbableBy: 'fire',
+      cone: { baseRadius: R, topRadius: R * 0.36, height: H },
+    },
+  };
 }
 
 /**
@@ -504,10 +569,212 @@ function buildEmbers(sources, rng) {
   return points;
 }
 
+// — Lagoon ————————————————————————————————————————————————————————
+
+const LAKE_MAT = new THREE.MeshLambertMaterial({
+  color: 0x2a86c4,
+  emissive: 0x06243a,
+  transparent: true,
+  opacity: 0.92,
+  side: THREE.DoubleSide,
+});
+const SHALLOWS_MAT = new THREE.MeshLambertMaterial({
+  color: 0x5cc4c8,
+  transparent: true,
+  opacity: 0.85,
+  side: THREE.DoubleSide,
+});
+const RIPPLE_MAT = new THREE.MeshBasicMaterial({
+  color: 0xe6f6ff,
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const REED_MAT = new THREE.MeshLambertMaterial({ color: 0x6f9a3a, flatShading: true });
+const CATTAIL_MAT = new THREE.MeshLambertMaterial({ color: 0x6b4426, flatShading: true });
+const LILY_MAT = new THREE.MeshLambertMaterial({ color: 0x3f9a3c, side: THREE.DoubleSide });
+const LILY_FLOWER_MAT = new THREE.MeshLambertMaterial({ color: 0xf5c6d8, flatShading: true });
+const POST_MAT = new THREE.MeshLambertMaterial({ color: 0x8a6238, flatShading: true });
+const FISH_MAT = new THREE.MeshLambertMaterial({ color: 0xe0873a, flatShading: true });
+
+// One leaping fish, shared by every fishing spot: an ellipsoid body with a
+// tail fin, modeled facing +X.
+const FISH_GEO = (() => {
+  const body = new THREE.SphereGeometry(1, 7, 5).toNonIndexed();
+  body.scale(4.2, 2, 1.4);
+  const tail = new THREE.ConeGeometry(1.8, 3, 3).toNonIndexed();
+  tail.rotateZ(Math.PI / 2);
+  tail.translate(-5, 0, 0);
+  const g = mergeGeometries([body, tail]);
+  body.dispose();
+  tail.dispose();
+  return g;
+})();
+
+/**
+ * The lake at the heart of the lagoon: deep water inside a turquoise ring of
+ * shallows. The collider is a little smaller than the wobbly outline so
+ * walkers can paddle in the shallows.
+ */
+function buildLake(biome, rng) {
+  const R = biome.radius * LAGOON.lakeRadius;
+  const group = new THREE.Group();
+
+  const shallows = new THREE.Mesh(blobDiscGeo(R * 1.06, rng, 36), SHALLOWS_MAT);
+  shallows.position.y = 0.6;
+  shallows.receiveShadow = true;
+  group.add(shallows);
+
+  const deep = new THREE.Mesh(blobDiscGeo(R * 0.93, rng, 36), LAKE_MAT);
+  deep.position.y = 0.75;
+  deep.receiveShadow = true;
+  group.add(deep);
+
+  group.position.set(biome.cx, 0, biome.cz);
+  return {
+    group,
+    radius: R,
+    collider: { x: biome.cx, z: biome.cz, radius: R * 0.9, swimmableBy: LAGOON.swimmableBy },
+  };
+}
+
+/**
+ * Fishing spot on the lake shore: a mooring post with a fish leaping out of
+ * the water beside it. The fish is the harvest system's fruitGroup (hidden on
+ * catch, regrown later) and bobs on the biome update loop. Yields fish.
+ *
+ * @param {{x:number, z:number}} at    the shore point the player stands on
+ * @param {{x:number, z:number}} lake  lake centre — the fish leaps toward it
+ */
+export function buildFishingSpot(at, lake, rng) {
+  const spot = new THREE.Group();
+
+  const post = new THREE.CylinderGeometry(1.4, 1.8, 14, 6).toNonIndexed();
+  post.translate(0, 5, 0);
+  const cap = new THREE.CylinderGeometry(2.4, 2.4, 1.2, 6).toNonIndexed();
+  cap.translate(0, 12.4, 0);
+  const postGeo = mergeGeometries([post, cap]);
+  post.dispose();
+  cap.dispose();
+  const postMesh = new THREE.Mesh(postGeo, POST_MAT);
+  postMesh.castShadow = true;
+  spot.add(postMesh);
+
+  // The fish leaps a short way out from the post, swimming along the shore
+  // (yaw -ang - π/2 turns the model's +X onto the shoreline tangent).
+  const ang = Math.atan2(lake.z - at.z, lake.x - at.x);
+  const fish = new THREE.Mesh(FISH_GEO, FISH_MAT);
+  fish.position.set(Math.cos(ang) * 22, 5, Math.sin(ang) * 22);
+  fish.rotation.y = -ang - Math.PI / 2 + (rng() < 0.5 ? Math.PI : 0);
+  fish.castShadow = true;
+  spot.add(fish);
+  spot.userData.fruitGroup = fish;
+  spot.userData.leapPhase = rng() * Math.PI * 2;
+
+  spot.position.set(at.x, 0, at.z);
+  return spot;
+}
+
+// Reeds and cattails are decoration only, so a lagoon's worth is one mesh
+// with two material groups (stalks, cattail heads).
+function buildReeds(biome, rng, lakeR, count) {
+  const stalks = [];
+  const heads = [];
+  const beachMax = biome.radius * 0.85;
+  for (let i = 0; i < count; i++) {
+    // Most clumps hug the waterline; the rest stray up the beach.
+    const ang = rng() * Math.PI * 2;
+    const rad = rng() < 0.75 ? lakeR * (0.92 + rng() * 0.16) : lakeR * 1.1 + rng() * (beachMax - lakeR * 1.1);
+    const cx = biome.cx + Math.cos(ang) * rad;
+    const cz = biome.cz + Math.sin(ang) * rad;
+    const blades = 4 + ((rng() * 4) | 0);
+    for (let b = 0; b < blades; b++) {
+      const h = 10 + rng() * 9;
+      const ox = cx + (rng() - 0.5) * 6;
+      const oz = cz + (rng() - 0.5) * 6;
+      const tilt = (rng() - 0.5) * 0.35;
+      const g = new THREE.CylinderGeometry(0.35, 0.6, h, 4).toNonIndexed();
+      g.translate(0, h / 2, 0);
+      g.rotateZ(tilt);
+      g.translate(ox, 0, oz);
+      stalks.push(g);
+      if (rng() < 0.45) {
+        const head = new THREE.CylinderGeometry(0.9, 0.9, 3.4, 5).toNonIndexed();
+        head.translate(0, h - 1, 0);
+        head.rotateZ(tilt);
+        head.translate(ox, 0, oz);
+        heads.push(head);
+      }
+    }
+  }
+  return mergeTwoPart(stalks, heads, [REED_MAT, CATTAIL_MAT]);
+}
+
+// Lily pads floating on the lake, a few with a pink flower. One mesh.
+function buildLilyPads(biome, rng, lakeR, count) {
+  const pads = [];
+  const flowers = [];
+  for (let i = 0; i < count; i++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = lakeR * 0.85 * Math.sqrt(rng());
+    const x = biome.cx + Math.cos(ang) * rad;
+    const z = biome.cz + Math.sin(ang) * rad;
+    // A disc with a wedge cut out reads as a lily pad from above.
+    const g = new THREE.CircleGeometry(4 + rng() * 4, 10, 0.3, Math.PI * 2 - 0.6).toNonIndexed();
+    g.rotateX(-Math.PI / 2);
+    g.rotateY(rng() * Math.PI * 2);
+    g.translate(x, 1, z);
+    pads.push(g);
+    if (rng() < 0.3) {
+      const f = new THREE.IcosahedronGeometry(1.6, 0);
+      f.scale(1, 0.7, 1);
+      f.translate(x, 2, z);
+      flowers.push(f);
+    }
+  }
+  return mergeTwoPart(pads, flowers, [LILY_MAT, LILY_FLOWER_MAT]);
+}
+
+// Bake two lists of non-indexed parts into one mesh with a material group
+// each, disposing the parts.
+function mergeTwoPart(a, b, materials) {
+  const geoA = mergeGeometries(a);
+  const geoB = mergeGeometries(b);
+  [...a, ...b].forEach((g) => g.dispose());
+  const geo = mergeGeometries([geoA, geoB], true);
+  geoA.dispose();
+  geoB.dispose();
+  const mesh = new THREE.Mesh(geo, materials);
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// Ripple rings round each fishing spot's fish, baked into one mesh whose
+// shared material pulses on the update loop.
+function buildRipples(spots) {
+  const rings = [];
+  for (const spot of spots) {
+    const fish = spot.userData.fruitGroup;
+    for (const [inner, outer] of [
+      [5, 6.2],
+      [10, 11],
+    ]) {
+      const g = new THREE.RingGeometry(inner, outer, 18);
+      g.rotateX(-Math.PI / 2);
+      g.translate(spot.position.x + fish.position.x, 1.1, spot.position.z + fish.position.z);
+      rings.push(g);
+    }
+  }
+  const geo = mergeGeometries(rings);
+  rings.forEach((g) => g.dispose());
+  return new THREE.Mesh(geo, RIPPLE_MAT);
+}
+
 // — Assembly ——————————————————————————————————————————————————————
 
 /**
- * Builds both biomes into the scene. Returns the handles main.js wires up:
+ * Builds every biome into the scene. Returns the handles main.js wires up:
  * harvestable object lists, the extra colliders/hazards, and a per-frame
  * update for the lava glow and embers.
  *
@@ -518,6 +785,7 @@ function buildEmbers(sources, rng) {
 export function buildBiomes(scene, rng) {
   const jungle = BIOMES.find((b) => b.id === 'jungle');
   const fire = BIOMES.find((b) => b.id === 'fire');
+  const lagoon = BIOMES.find((b) => b.id === 'lagoon');
 
   const colliders = [];
   const hazards = [];
@@ -569,6 +837,28 @@ export function buildBiomes(scene, rng) {
     ...volcano.group.userData.lavaMaterials,
     ...lavaPools.map((p) => p.userData.lavaMaterial),
   ];
+  // — Lagoon — built after the fire fields so the jungle and fire layouts keep
+  // the rng sequence (and so the scenery) of saves made before it existed.
+  scene.add(buildPatch(lagoon, rng, makeSandTexture(rng), LAGOON.groundY));
+  const lake = buildLake(lagoon, rng);
+  scene.add(lake.group);
+  colliders.push(lake.collider);
+
+  // Fishing spots stand just outside the lake collider, spread evenly round
+  // the shore with a little jitter, so every one is reachable on foot.
+  const fishingSpots = [];
+  const shoreR = lake.collider.radius + 12;
+  for (let i = 0; i < LAGOON.fishingSpotCount; i++) {
+    const ang = ((i + (rng() - 0.5) * 0.6) / LAGOON.fishingSpotCount) * Math.PI * 2;
+    const at = { x: lagoon.cx + Math.cos(ang) * shoreR, z: lagoon.cz + Math.sin(ang) * shoreR };
+    const spot = buildFishingSpot(at, { x: lagoon.cx, z: lagoon.cz }, rng);
+    fishingSpots.push(spot);
+    scene.add(spot);
+  }
+  scene.add(buildReeds(lagoon, rng, lake.radius, LAGOON.reedCount));
+  scene.add(buildLilyPads(lagoon, rng, lake.radius, LAGOON.lilyPadCount));
+  scene.add(buildRipples(fishingSpots));
+
   const glow = volcano.group.userData.glow;
   const emberPos = embers.geometry.attributes.position;
   const meta = embers.userData.meta;
@@ -578,8 +868,18 @@ export function buildBiomes(scene, rng) {
     jungleTrees,
     emberRocks,
     lavaPools,
+    fishingSpots,
     colliders,
     hazards,
+    // What a city has to build around, because it can't be cleared away like a
+    // tree. Fishing spots count: a house costs fish, and they're where fish
+    // comes from.
+    fixedObstacles: [
+      volcano.collider,
+      lake.collider,
+      ...lavaPools.map((p) => ({ x: p.position.x, z: p.position.z, radius: p.userData.radius })),
+      ...fishingSpots.map((s) => ({ x: s.position.x, z: s.position.z, radius: 30 })),
+    ],
     update(time) {
       // Lava breathes; the crater light flickers a little faster.
       const pulse = 1.45 + Math.sin(time * 1.7) * 0.3;
@@ -600,6 +900,16 @@ export function buildBiomes(scene, rng) {
         );
       }
       emberPos.needsUpdate = true;
+
+      // The lake glints, ripples breathe, and each fish leaps on its own beat.
+      LAKE_MAT.emissiveIntensity = 1 + Math.sin(time * 0.9) * 0.35;
+      RIPPLE_MAT.opacity = 0.35 + Math.sin(time * 2.2) * 0.2;
+      for (const spot of fishingSpots) {
+        const fish = spot.userData.fruitGroup;
+        const t = time * 2.4 + spot.userData.leapPhase;
+        fish.position.y = 5 + Math.sin(t) * 3.5;
+        fish.rotation.z = Math.cos(t) * 0.6; // nose up rising, down falling
+      }
     },
   };
 }

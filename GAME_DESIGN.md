@@ -55,15 +55,18 @@ The game world is a single **flat grass island** of 10000 × 10000 world units �
 
 ### Areas / Biomes
 
-The island is one landmass with **three biomes**. The grass meadow covers the centre and most of the island; two biome patches sit in opposite corners, so the player spawn and the early game are meadow-only and the biomes are something to walk out and discover.
+The island is one landmass with **four biomes**. The grass meadow covers the centre and most of the island; three biome patches sit in the corners, so the player spawn and the early game are meadow-only and the biomes are something to walk out and discover.
 
 | Biome | Where | Ground | Scenery | Harvest |
 |---|---|---|---|---|
 | **Grass Meadow** | Everywhere else, including the spawn | Repeating grass tile | Apple trees, rocks | Apples; coins + stone |
 | **Jungle** | South-east, centre (7600, 7500), radius ~1700 | Dark mossy green with leaf litter | Palm-style trees with coconuts, ferns (decor) | **Wood** (+1, 3s regrow) — the only wild wood source |
 | **Fire Fields** | North-west, centre (2400, 2500), radius ~1650 | Dark basalt with glowing cracks | Volcano cone with a glowing crater, lava pools, ember rocks, drifting embers | **+2 coins +1 stone** per ember rock (16s regrow) |
+| **Lagoon** | North-east, centre (7600, 2500), radius ~1650 | Pale sand with damp patches and shells | A big lake (deep water inside turquoise shallows) with lily pads, reeds and cattails round the shore, fishing spots with leaping fish | **Fish** (+1, 8s regrow) per fishing spot — the only wild fish source |
 
 Lava pools are contact hazards like barbed wire: Black Dragons standing in one take damage each tick, while friendly dragons are simply blocked by the pool's collider. The volcano, lava pools, palms and ember rocks all block movement.
+
+The lagoon's lake blocks every dragon except **Water Dragons**, which swim straight across it, sitting a little low in the water (riding one lets the player cross too). Black Dragons can't cross, so the lake also works as a moat. Fishing spots stand on the shore just outside the water, so they can all be reached on foot. The lagoon plays the *gutenAbend* lofi track by day.
 
 Biome layout lives in `src3d/biomes/biomeMap.js`; meshes in `src3d/biomes/biomeScenery.js`. Meadow scenery that would fall inside a biome patch is dropped, and the meadow scatter uses the same seeded sequence as before, so existing saves keep their meadow layout.
 
@@ -376,6 +379,14 @@ If the primary dragon Phillis reaches 0 HP from enemy attacks → Game Over scre
 - Two build options:
   - **Dragon House**: 3 Wood + 1 Fish → spawns a house near the player.
   - **Castle**: 10 Stone → spawns a castle near the player + auto-builds walls around all buildings.
+
+### City
+
+- Placing the 10th plain Dragon House founds a city. Upgraded houses (Tower, Mine, Blacksmith) and castles don't count, and stay where they are.
+- All plain houses gather into one main street centred on the 10th house, or as near to it as fits. The city avoids the volcano, lava, lake, fishing spots and standing buildings, and clears any trees and rocks in the way.
+- Houses become taller City Buildings, which sleep 4 dragons instead of 2. They can still be upgraded.
+- Streetlights stand between the buildings and come on at night, along with the windows.
+- Every later house moves to the end of the street. Castle walls redraw around the city if needed.
 
 ### House Upgrade Menu
 

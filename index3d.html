@@ -1007,6 +1007,8 @@
         min-width: 54px;
       }
       .settings-toggle.off { background: #9a9a9a; }
+      .settings-toggle:disabled { background: #9a9a9a; cursor: default; }
+      .now-playing { font-size: 13px; line-height: 1.25; margin-right: 8px; }
       .settings-btn-row { display: flex; gap: 8px; margin-top: 10px; }
       .settings-action {
         flex: 1;
@@ -1148,6 +1150,10 @@
       <div class="settings-row">
         <span>🎵 Music</span>
         <button class="settings-toggle" id="toggle-music">ON</button>
+      </div>
+      <div class="settings-row">
+        <span class="now-playing" id="now-playing">🎶 —</span>
+        <button class="settings-toggle" id="next-song" title="Next song">⏭</button>
       </div>
       <div class="settings-btn-row">
         <button class="settings-action" id="save-now">💾 Save</button>

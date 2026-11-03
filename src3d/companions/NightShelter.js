@@ -12,13 +12,14 @@
 // it is upgraded, at which point it has become a Tower/Mine/Blacksmith and stops
 // taking lodgers. A castle keeps its fortress model even when upgraded
 // (ConstructionManager #buildGroupFor), so it shelters either way — and being
-// far bigger, it sleeps more of them.
-export const CAPACITY = { house: 2, castle: 4 };
+// far bigger, it sleeps more of them. So does a house that has gathered into a
+// city and grown tall.
+export const CAPACITY = { house: 2, city: 4, castle: 4 };
 
 // Collide radii to fall back on when a structure has no mesh record yet. These
 // mirror StructureFactory; in practice the live radius is always available,
 // since ConstructionManager spawns the mesh on the structureAdded event.
-const FALLBACK_RADIUS = { house: 26, castle: 52 };
+const FALLBACK_RADIUS = { house: 26, city: 30, castle: 52 };
 
 // Gap between a shelter's wall and the spot a dragon stands on to enter.
 const DOOR_GAP = 4;
@@ -37,7 +38,7 @@ export function shelterSpots(structures, radiusFor) {
   for (const s of structures) {
     let kind = null;
     if (s.type === 'castle') kind = 'castle';
-    else if (s.type === 'house' && !s.upgradeType) kind = 'house';
+    else if (s.type === 'house' && !s.upgradeType) kind = s.cityPlot !== undefined ? 'city' : 'house';
     if (!kind) continue;
     spots.push({
       id: s.id,

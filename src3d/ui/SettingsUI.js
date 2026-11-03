@@ -9,8 +9,9 @@ export class SettingsUI {
    * @param {AudioManager} opts.audio
    * @param {() => boolean} opts.onSaveNow   returns true if the write succeeded
    * @param {() => void} opts.onNewGame      wipe the save and restart
+   * @param {() => void} opts.onNextSong     skip to the next island song
    */
-  constructor({ audio, onSaveNow, onNewGame }) {
+  constructor({ audio, onSaveNow, onNewGame, onNextSong }) {
     this.audio = audio;
     this.onSaveNow = onSaveNow;
     this.onNewGame = onNewGame;
@@ -19,6 +20,8 @@ export class SettingsUI {
     this.panel = document.getElementById('settings-panel');
     this.soundBtn = document.getElementById('toggle-sound');
     this.musicBtn = document.getElementById('toggle-music');
+    this.nowPlaying = document.getElementById('now-playing');
+    this.nextBtn = document.getElementById('next-song');
     this.note = document.getElementById('save-note');
     this.toast = document.getElementById('save-toast');
     this._toastTimer = null;
@@ -42,6 +45,9 @@ export class SettingsUI {
       audio.setMusic(!audio.music);
       this.render();
     });
+    this.nextBtn.addEventListener('click', () => onNextSong());
+    // Keep the "now playing" line current while the panel is open.
+    audio.onTrackChanged = () => this.render();
 
     document.getElementById('save-now').addEventListener('click', () => {
       this.showSaved(this.onSaveNow() ? 'saved' : 'failed');
@@ -64,6 +70,11 @@ export class SettingsUI {
     };
     set(this.soundBtn, this.audio.sound);
     set(this.musicBtn, this.audio.music);
+
+    // Only the island songs can be skipped; battle and Black Room keep theirs.
+    const title = this.audio.trackTitle;
+    this.nowPlaying.textContent = `🎶 ${title ?? '—'}`;
+    this.nextBtn.disabled = !title;
   }
 
   /** Bottom-center "💾 Saved" confirmation, also used by the autosave tick. */

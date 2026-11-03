@@ -20,6 +20,7 @@ import {
   GRABEN,
   DRAGON_ARMOR,
 } from '../data/structures.js';
+import { plainHouses, plotPosition } from '../structures/CityPlan.js';
 
 // — Tunables copied from the 2D source (code wins over docs) —
 export const DECAY_INTERVAL_MS = 15000; // MainScene global stat-decay loop
@@ -44,6 +45,11 @@ export const STAT_MAX = 100;
 export const ENEMY_ATTACK_DAMAGE = 10; // black dragon fireball hit
 export const PLAYER_ATTACK_DAMAGE = 35; // player click-attack on an enemy
 export const ENEMY_LOOT_COINS = 3; // paid out per defeated black dragon
+
+// — The three-headed dragon on the volcano (one per island, never respawns) —
+export const BOSS_MAX_HP = 1000;
+export const BOSS_HEAD_DAMAGE = 15; // per fireball; each head breathes its own
+export const BOSS_LOOT_COINS = 300;
 
 /**
  * What a hit actually costs a dragon: forged armor (Construction Hub, 6 stone)
@@ -94,12 +100,16 @@ export class GameState extends Emitter {
     this.ownedDragons = []; // [{ id, typeId, name, key, stats }]
     this.ownedCards = []; // [{ name, type, key }] — 2D MainScene.ownedCards shape
     this.selectedId = null;
+    this.riddenId = 'phillis'; // the dragon WASD / click-to-move drives
     this.craftCount = 0; // uniquifies crafted-dragon ids (dupes are allowed)
     // Placed structures, matching the TECHNICAL_ARCHITECTURE.md §5 save shape
     // (which uses x/y for the 2D top-down plane — our z maps to its y):
     // [{ id, type: 'house'|'castle', x, z, upgradeType: null|'tower'|'mine'|'blacksmith' }]
     this.structures = [];
     this.structureCount = 0;
+    // The main street's centre once ten houses have gathered, else null. A house
+    // on the street also carries `cityPlot` (structures/CityPlan.js).
+    this.city = null;
     // Outer defences. Deliberately NOT in `structures`: they hang off the wall
     // ring rather than sitting in it, so they must not widen its bounding box
     // (#rebuildWalls) or answer the upgrade menu's click routing.
@@ -107,6 +117,9 @@ export class GameState extends Emitter {
     this.wireCount = 0;
     this.hasGraben = false;
     this.isGameOver = false; // set once when Phillis faints (Batch 9)
+    // The volcano boss's HP. It persists in the save, so chipping at it over
+    // several visits counts; 0 means it is slain for good.
+    this.bossHp = BOSS_MAX_HP;
   }
 
   // — Ownership ————————————————————————————————————————————————
@@ -135,6 +148,13 @@ export class GameState extends Emitter {
     if (id === this.selectedId) return;
     this.selectedId = id;
     this.emit('selection', this.selected);
+  }
+
+  /** Take control of another owned dragon; the old one joins the companions. */
+  ride(id) {
+    if (id === this.riddenId || !this.getDragon(id)) return;
+    this.riddenId = id;
+    this.emit('ride', this.getDragon(id));
   }
 
   // — Resources ————————————————————————————————————————————————
@@ -336,7 +356,38 @@ export class GameState extends Emitter {
     };
     this.structures.push(entry);
     this.emit('structureAdded', entry);
+    // Only ever emitted here, never on a restore: this is the player placing a
+    // new building, which is what can found or grow a city.
+    this.emit('structureBuilt', entry);
     return entry;
+  }
+
+  /**
+   * Gather every plain house onto the given plots around (x, z). Workshops and
+   * castles stay where they are. Emits 'cityFounded' once the entries have moved.
+   * Returns the city, or null if there already is one.
+   */
+  foundCity(x, z, plots) {
+    if (this.city) return null;
+    this.city = { x, z };
+    plainHouses(this.structures).forEach((s, i) => {
+      if (plots[i] !== undefined) this.#seatInCity(s, plots[i]);
+    });
+    this.emit('cityFounded', this.city);
+    return this.city;
+  }
+
+  /** Move one newly built house onto a free plot of the existing street. */
+  joinCity(entry, plot) {
+    this.#seatInCity(entry, plot);
+    this.emit('cityJoined', entry);
+  }
+
+  #seatInCity(entry, plot) {
+    const { x, z } = plotPosition(this.city, plot);
+    entry.x = x;
+    entry.z = z;
+    entry.cityPlot = plot;
   }
 
   /**
@@ -508,6 +559,22 @@ export class GameState extends Emitter {
       this.emit('gameOver');
     }
     return d;
+  }
+
+  /**
+   * Hurt the volcano boss. Emits 'bossHurt' every hit and 'bossDefeated' (plus
+   * the coin payout) once, on the killing blow. Returns the HP actually taken.
+   */
+  damageBoss(amount) {
+    if (this.bossHp <= 0 || this.isGameOver) return 0;
+    const dealt = Math.min(this.bossHp, amount);
+    this.bossHp -= dealt;
+    this.emit('bossHurt', this.bossHp);
+    if (this.bossHp <= 0) {
+      this.addResource('coins', BOSS_LOOT_COINS);
+      this.emit('bossDefeated');
+    }
+    return dealt;
   }
 
   // — Passive decay (call every DECAY_INTERVAL_MS) ————————————————

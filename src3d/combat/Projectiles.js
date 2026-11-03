@@ -94,23 +94,31 @@ export class ProjectileManager {
    * @param {THREE.Vector3} from          spawn point (copied)
    * @param {() => THREE.Vector3} getTargetPos  live target anchor
    * @param {Function} onHit              called once on arrival
+   * @param {object} [opts]               the volcano boss's long-range breath
+   * @param {number} [opts.speed]         world units/sec
+   * @param {number} [opts.scale]         size multiplier for core + trail
+   * @param {number} [opts.maxLife]       seconds before it fizzles
    */
-  fireElement(element, from, getTargetPos, onHit) {
+  fireElement(element, from, getTargetPos, onHit, { speed = PROJECTILE_SPEED, scale = 1, maxLife = MAX_LIFE_SEC } = {}) {
     const style = ELEMENT_STYLES[element] || ELEMENT_STYLES.default;
     const group = new THREE.Group();
-    group.add(buildCore(style));
+    const core = buildCore(style);
+    core.scale.multiplyScalar(scale);
+    group.add(core);
     group.position.copy(from);
     this.scene.add(group);
     this.onFire?.('fire');
     this.shots.push({
       group,
       getTargetPos,
-      speed: PROJECTILE_SPEED,
+      speed,
       spin: style.shape === 'rock' ? 6 : 0, // boulders tumble
       orient: style.shape === 'bolt', // bolts point along their velocity
       trail: style.trail,
+      trailScale: scale,
       trailT: 0,
       life: 0,
+      maxLife,
       onHit,
     });
   }
@@ -128,13 +136,15 @@ export class ProjectileManager {
       spin: 0,
       orient: true,
       trail: 0xffe680,
+      trailScale: 1,
       trailT: 0,
       life: 0,
+      maxLife: MAX_LIFE_SEC,
       onHit,
     });
   }
 
-  #spawnPuff(pos, color) {
+  #spawnPuff(pos, color, scale) {
     const mesh = new THREE.Mesh(
       GEO.puff,
       new THREE.MeshBasicMaterial({
@@ -146,9 +156,9 @@ export class ProjectileManager {
       })
     );
     mesh.position.copy(pos);
-    mesh.scale.setScalar(2.5);
+    mesh.scale.setScalar(2.5 * scale);
     this.scene.add(mesh);
-    this.puffs.push({ mesh, t: 0 });
+    this.puffs.push({ mesh, t: 0, scale });
   }
 
   #remove(shot) {
@@ -163,7 +173,7 @@ export class ProjectileManager {
       s.life += dt;
       const target = s.getTargetPos();
 
-      if (!target || s.life > MAX_LIFE_SEC) {
+      if (!target || s.life > s.maxLife) {
         this.#remove(s);
         this.shots.splice(i, 1);
         continue;
@@ -192,7 +202,7 @@ export class ProjectileManager {
       s.trailT += dt;
       if (s.trailT >= TRAIL_INTERVAL) {
         s.trailT = 0;
-        this.#spawnPuff(s.group.position, s.trail);
+        this.#spawnPuff(s.group.position, s.trail, s.trailScale);
       }
     }
 
@@ -208,7 +218,7 @@ export class ProjectileManager {
         continue;
       }
       p.mesh.material.opacity = 0.7 * (1 - k);
-      p.mesh.scale.setScalar(2.5 * (1 - k * 0.6));
+      p.mesh.scale.setScalar(2.5 * p.scale * (1 - k * 0.6));
     }
   }
 }

@@ -32,10 +32,21 @@ test('biome centers resolve to their own biome', () => {
   }
 });
 
-test('jungle and fire regions do not overlap', () => {
-  const [a, b] = BIOMES;
-  const gap = Math.hypot(a.cx - b.cx, a.cz - b.cz) - (a.radius + b.radius);
-  assert.ok(gap > 0, `regions overlap by ${-gap}`);
+test('no two biome regions overlap', () => {
+  for (let i = 0; i < BIOMES.length; i++) {
+    for (let j = i + 1; j < BIOMES.length; j++) {
+      const [a, b] = [BIOMES[i], BIOMES[j]];
+      const gap = Math.hypot(a.cx - b.cx, a.cz - b.cz) - (a.radius + b.radius);
+      assert.ok(gap > 0, `${a.id} and ${b.id} overlap by ${-gap}`);
+    }
+  }
+});
+
+test('the lagoon sits in the north-east corner', () => {
+  const lagoon = BIOMES.find((b) => b.id === 'lagoon');
+  assert.ok(lagoon, 'lagoon biome exists');
+  assert.ok(lagoon.cx > WORLD_SIZE / 2 && lagoon.cz < WORLD_SIZE / 2);
+  assert.equal(biomeAt(lagoon.cx, lagoon.cz)?.id, 'lagoon');
 });
 
 test('biome regions stay inside the scatter range with margin', () => {

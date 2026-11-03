@@ -11,6 +11,8 @@
 // Browsers refuse to start an AudioContext before a user gesture, so the
 // context is created lazily on the first pointer/key event (see arm()).
 
+import { LOFI_TRACKS } from './lofiTracks.js';
+
 const PREFS_KEY = 'dragonIsland3D.audio';
 
 const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -149,6 +151,9 @@ const TRACKS = {
       });
     },
   },
+
+  // Lofi German songs (see lofiTracks.js), one per island place.
+  ...LOFI_TRACKS,
 };
 
 // — Sound effects ————————————————————————————————————————————————
@@ -169,6 +174,11 @@ const SFX = {
     a.slide(t + 0.01, 130, 62, 0.2, { type: 'sine', gain: 0.14 });
   },
   coin: (a, t) => a.arp(t, [988, 1319], 0.06, { type: 'square', gain: 0.07, dur: 0.09 }),
+  // Catch Fish — a splash with a little upward flick.
+  splash: (a, t) => {
+    a.noise(t, 0.32, { freq: 2600, sweepTo: 500, q: 1.2, gain: 0.12 });
+    a.slide(t + 0.03, 300, 620, 0.12, { type: 'sine', gain: 0.08 });
+  },
 
   // Dragon Spawn — magical shimmer.
   spawn: (a, t) => {
@@ -216,6 +226,13 @@ const SFX = {
   },
   save: (a, t) => a.arp(t, [1046, 1568], 0.05, { type: 'sine', gain: 0.05, dur: 0.1 }),
   secret: (a, t) => a.arp(t, [330, 262, 220, 165], 0.22, { type: 'sine', gain: 0.06, dur: 1.1 }),
+  // The volcano dragon wakes — three throats, three falling growls.
+  roar: (a, t) => {
+    a.slide(t, 210, 70, 1.1, { type: 'sawtooth', gain: 0.1, attack: 0.08 });
+    a.slide(t + 0.12, 170, 55, 1.2, { type: 'sawtooth', gain: 0.09, attack: 0.08 });
+    a.slide(t + 0.24, 260, 90, 1.0, { type: 'square', gain: 0.06, attack: 0.08 });
+    a.noise(t, 1.1, { freq: 300, sweepTo: 120, q: 2, gain: 0.08 });
+  },
 };
 
 export class AudioManager {
@@ -236,6 +253,7 @@ export class AudioManager {
     this._nextTime = 0;
     this._armed = false;
     this.onPrefsChanged = null; // UI hook: () => void
+    this.onTrackChanged = null; // UI hook: () => void
   }
 
   // — Preferences (survive reloads alongside the save file) —
@@ -297,6 +315,22 @@ export class AudioManager {
     this.musicBus.gain.value = this.music ? 1 : 0;
     this.musicBus.connect(this.master);
 
+    // Lofi bus: everything sent here is muffled by a lowpass before joining
+    // the music bus, and oscillators on it get a slow pitch wobble (tape wow)
+    // from a shared LFO wired into their detune.
+    this.lofiBus = this.ctx.createGain();
+    const muffle = this.ctx.createBiquadFilter();
+    muffle.type = 'lowpass';
+    muffle.frequency.value = 3200;
+    muffle.Q.value = 0.5;
+    this.lofiBus.connect(muffle).connect(this.musicBus);
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.value = 0.35;
+    this.wobble = this.ctx.createGain();
+    this.wobble.gain.value = 7; // cents
+    lfo.connect(this.wobble);
+    lfo.start();
+
     // One second of white noise, reused by every percussive effect.
     const len = this.ctx.sampleRate;
     this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -307,8 +341,10 @@ export class AudioManager {
   }
 
   // — Synth primitives ————————————————————————————————————————
-  #bus(isMusic) {
-    return isMusic ? this.musicBus : this.sfxBus;
+  /** `music` is false (SFX), true (music) or 'lofi' (muffled music). */
+  #bus(music) {
+    if (music === 'lofi') return this.lofiBus;
+    return music ? this.musicBus : this.sfxBus;
   }
 
   /** One enveloped oscillator note. */
@@ -324,6 +360,11 @@ export class AudioManager {
     env.gain.setValueAtTime(gain, when + Math.max(attack, dur));
     env.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(attack, dur) + release);
     osc.connect(env).connect(this.#bus(music));
+    if (music === 'lofi') {
+      this.wobble.connect(osc.detune);
+      // Drop the LFO link when done, or the LFO would keep every note alive.
+      osc.onended = () => this.wobble.disconnect(osc.detune);
+    }
     osc.start(when);
     osc.stop(when + Math.max(attack, dur) + release + 0.02);
   }
@@ -403,10 +444,16 @@ export class AudioManager {
   playMusic(name) {
     if (this._trackName === name) return;
     this._trackName = name;
+    this.onTrackChanged?.();
     this.#stopScheduler();
     if (!name) return;
     const ctx = this.#ensureContext();
     if (ctx && ctx.state === 'running') this.#startScheduler();
+  }
+
+  /** Title of the current song, or null for untitled loops (battle, Black Room). */
+  get trackTitle() {
+    return TRACKS[this._trackName]?.title ?? null;
   }
 
   #startScheduler() {

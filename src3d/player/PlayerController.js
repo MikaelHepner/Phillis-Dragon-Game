@@ -18,7 +18,8 @@ const ARRIVE_DIST = 6; // stop this close to a click target
 
 export class PlayerController {
   constructor(dragon, camera, canvas, { colliders, bounds, groundY = 2, speed = 115, onClick = null }) {
-    this.mover = new MovableDragon(dragon, { colliders, bounds, speed, groundY });
+    this._moverOpts = { colliders, bounds, speed, groundY };
+    this.mover = new MovableDragon(dragon, this._moverOpts);
     this.camera = camera;
     this.groundY = groundY;
     this.keys = new Set();
@@ -36,6 +37,7 @@ export class PlayerController {
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
+    this._surfacePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
     this._downAt = null;
 
     window.addEventListener('keydown', (e) => {
@@ -64,6 +66,16 @@ export class PlayerController {
     return this.mover.position;
   }
 
+  get dragon() {
+    return this.mover.dragon;
+  }
+
+  /** Hand the controls to another dragon (the "Ride" button). */
+  setDragon(dragon) {
+    this.mover = new MovableDragon(dragon, this._moverOpts);
+    this.moveTarget = null;
+  }
+
   #setTargetFromPointer(clientX, clientY) {
     this._pointer.set(
       (clientX / window.innerWidth) * 2 - 1,
@@ -71,9 +83,18 @@ export class PlayerController {
     );
     this._raycaster.setFromCamera(this._pointer, this.camera);
     const hit = new THREE.Vector3();
-    if (this._raycaster.ray.intersectPlane(this._groundPlane, hit)) {
-      this.moveTarget = hit;
+    if (!this._raycaster.ray.intersectPlane(this._groundPlane, hit)) return;
+    // A tap on a slope this dragon can climb (a fire dragon on the volcano)
+    // hits the ground plane somewhere behind the slope. Raise the plane to the
+    // surface height there and re-cast a few times so the target lands on the
+    // slope itself instead of past it.
+    for (let i = 0; i < 4; i++) {
+      const h = this.mover.terrainHeight(hit.x, hit.z);
+      if (h === 0) break;
+      this._surfacePlane.constant = -(this.groundY + h);
+      if (!this._raycaster.ray.intersectPlane(this._surfacePlane, hit)) break;
     }
+    this.moveTarget = hit;
   }
 
   #keyAxis(codes) {

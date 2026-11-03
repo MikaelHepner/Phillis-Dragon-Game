@@ -17,6 +17,19 @@ function dampAngle(current, target, lambda, dt) {
   return current + diff * (1 - Math.exp(-lambda * dt));
 }
 
+// Height of a climbable cone's surface at (x, z): flat on the crater floor,
+// a straight slope down to the base, 0 beyond it.
+export function coneHeightAt(c, x, z) {
+  const { baseRadius, topRadius, height } = c.cone;
+  const d = Math.hypot(x - c.x, z - c.z);
+  if (d >= baseRadius) return 0;
+  if (d <= topRadius) return height;
+  return (height * (baseRadius - d)) / (baseRadius - topRadius);
+}
+
+// How far a swimming dragon sinks below the ground plane.
+export const SWIM_DEPTH = 6;
+
 export class MovableDragon {
   /**
    * @param {Dragon} dragon      built via createDragon()
@@ -36,7 +49,14 @@ export class MovableDragon {
     this.radius = radius;
     this.speed = speed;
     this.turnSpeed = turnSpeed;
-    this.group.position.y = groundY;
+    this.groundY = groundY;
+    // Colliders tagged climbableBy / swimmableBy this element are terrain,
+    // not walls.
+    this.element = dragon.config?.element ?? null;
+    // Re-wrapping a dragon that is already up a slope (handing control to it)
+    // must not drop it to the ground for a frame.
+    const p = this.group.position;
+    p.y = groundY + this.terrainHeight(p.x, p.z);
     this.yaw = this.group.rotation.y;
     this.moving = false;
   }
@@ -58,6 +78,7 @@ export class MovableDragon {
       const resolved = this.#resolve(pos.x + vx * dt, pos.z + vz * dt);
       pos.x = resolved.x;
       pos.z = resolved.z;
+      pos.y = this.groundY + this.terrainHeight(pos.x, pos.z);
       // Face the direction of travel (dragons are modeled facing +Z).
       const targetYaw = Math.atan2(vx, vz);
       this.yaw = dampAngle(this.yaw, targetYaw, this.turnSpeed, dt);
@@ -72,6 +93,7 @@ export class MovableDragon {
   // Push out of any overlapping obstacle, then clamp inside the world bounds.
   #resolve(x, z) {
     for (const c of this.colliders) {
+      if (this.#canClimb(c) || this.#canSwim(c)) continue;
       const dx = x - c.x;
       const dz = z - c.z;
       const min = this.radius + c.radius;
@@ -88,5 +110,26 @@ export class MovableDragon {
       x: THREE.MathUtils.clamp(x, lo, hi),
       z: THREE.MathUtils.clamp(z, lo, hi),
     };
+  }
+
+  #canClimb(c) {
+    return this.element !== null && c.climbableBy === this.element && !!c.cone;
+  }
+
+  #canSwim(c) {
+    return this.element !== null && c.swimmableBy === this.element;
+  }
+
+  // Tallest surface this dragon can climb under (x, z); 0 on open ground, and
+  // a little below 0 while swimming so it sits in the water instead of on it.
+  terrainHeight(x, z) {
+    if (this.element === null) return 0;
+    let h = 0;
+    let swimming = false;
+    for (const c of this.colliders) {
+      if (this.#canClimb(c)) h = Math.max(h, coneHeightAt(c, x, z));
+      else if (this.#canSwim(c) && Math.hypot(x - c.x, z - c.z) < c.radius) swimming = true;
+    }
+    return h === 0 && swimming ? -SWIM_DEPTH : h;
   }
 }

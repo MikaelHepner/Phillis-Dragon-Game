@@ -7,6 +7,7 @@ import { preloadDragonModel } from './dragons/DragonModel.js';
 import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
 import { PlayerController } from './player/PlayerController.js';
 import { CompanionManager } from './companions/CompanionManager.js';
+import { coneHeightAt } from './entities/MovableDragon.js';
 import {
   GameState,
   DECAY_INTERVAL_MS,
@@ -27,6 +28,7 @@ import { PRODUCTION_INTERVAL_MS } from './data/structures.js';
 import { cardIcon } from './data/cards.js';
 import { ProjectileManager } from './combat/Projectiles.js';
 import { EnemyManager } from './combat/EnemyManager.js';
+import { VolcanoBoss } from './combat/VolcanoBoss.js';
 import { TowerDefense } from './combat/TowerDefense.js';
 import { GameOverUI } from './ui/GameOverUI.js';
 import { BattleArena } from './battle/BattleArena.js';
@@ -34,6 +36,8 @@ import { FightUI } from './ui/FightUI.js';
 import { DayNightCycle } from './DayNightCycle.js';
 import { AudioManager } from './audio/AudioManager.js';
 import { BlackRoom } from './blackroom/BlackRoom.js';
+import { biomeAt } from './biomes/biomeMap.js';
+import { SONGS } from './audio/lofiTracks.js';
 
 const GROUND_Y = 2; // dragons' feet rest here on the grass
 
@@ -226,6 +230,7 @@ const player = new PlayerController(playerDragon, camera, canvas, {
     construction.handleClick(x, y) ||
     pickDragon(x, y) ||
     enemies.tryClickAttack(x, y, player.position) ||
+    boss.tryClickAttack(x, y, player.position) ||
     construction.tryClickStructure(x, y) ||
     harvest.tryClick(x, y, player.position),
 });
@@ -233,7 +238,28 @@ const player = new PlayerController(playerDragon, camera, canvas, {
 // Select the player dragon by default so the caretaking panel is populated.
 state.select('phillis');
 
-const cameraRig = new CameraRig(camera, playerDragon.group, canvas);
+// The volcano cone is the only terrain with height; the camera rides over it
+// even when Phillis (who can't climb) walks along its foot.
+const cones = colliders.filter((c) => c.cone);
+const cameraRig = new CameraRig(camera, playerDragon.group, canvas, {
+  heightAt: (x, z) => cones.reduce((h, c) => Math.max(h, GROUND_Y + coneHeightAt(c, x, z)), GROUND_Y),
+});
+
+// — Riding: the 🐲 Ride button hands the controls to the selected dragon —
+// The dragon you were riding drops into the companion chain and the new one
+// leaves it, so exactly one dragon is ever driven by the keyboard.
+state.on('ride', (entry) => {
+  const next = selectables.find((s) => s.id === entry.id)?.dragon;
+  const prev = player.dragon;
+  if (!next || next === prev) return;
+  companions.remove(next);
+  companions.add(prev);
+  player.setDragon(next);
+  cameraRig.setTarget(next.group);
+  enemies.playerDragon = next; // the click-attack lunge animates your mount
+  boss.playerDragon = next;
+  floatOnDragon(next, '🐲');
+});
 
 // The island freezes while the arena or the Black Room is on screen (the 3D
 // equivalent of the 2D scene.pause('MainScene')) — one predicate, used by the
@@ -380,7 +406,8 @@ state.on('cardGiven', ({ card, dragon, resource }) => {
 });
 
 // — Harvesting: apples from trees, coins + stone from rocks (Batch 5), wood
-// from jungle palms and double coins from ember rocks (biomes) —
+// from jungle palms, double coins from ember rocks and fish from lagoon
+// fishing spots (biomes) —
 const harvest = new HarvestManager({
   camera,
   onHarvest(node, cfg) {
@@ -393,6 +420,7 @@ world.trees.forEach((t) => harvest.addTree(t));
 world.rocks.forEach((r) => harvest.addRock(r));
 world.jungleTrees.forEach((t) => harvest.addJungleTree(t));
 world.emberRocks.forEach((r) => harvest.addEmberRock(r));
+world.fishingSpots.forEach((s) => harvest.addFishingSpot(s));
 
 // — Construction (Batch 8): ghost placement, structures, defensive walls —
 const construction = new ConstructionManager({
@@ -420,6 +448,9 @@ state.on('structureAdded', () => {
   if (!restoring) audio.sfx('build');
 });
 state.on('structureUpgraded', () => audio.sfx('upgrade'));
+state.on('cityFounded', () => {
+  if (!restoring) audio.sfx('upgrade');
+});
 state.on('barbedWireAdded', () => {
   if (!restoring) audio.sfx('build');
 });
@@ -454,6 +485,20 @@ const enemies = new EnemyManager({
   playerDragon,
   floatText,
 });
+// The three-headed dragon in the volcano's crater: shoots anything of yours
+// near the volcano, and can be hit from the foot of the cone.
+const boss = new VolcanoBoss({
+  scene,
+  camera,
+  state,
+  cone: cones[0],
+  groundY: GROUND_Y,
+  projectiles,
+  getFriendlies: () => selectables.filter((s) => !companions.sheltered.has(s.dragon)),
+  playerDragon,
+  floatText,
+  audio,
+});
 const towers = new TowerDefense({
   state,
   construction,
@@ -486,12 +531,60 @@ document.getElementById('smile-btn').addEventListener('click', () => {
   updateMusic();
 });
 
-// One loop per place you can be. Called whenever that changes.
+// On the island, each place has its own lofi song (src3d/audio/lofiTracks.js):
+// home (near your buildings) is the village by day and the dragons' bedroom
+// at night; elsewhere the biome picks.
+const HOME_RADIUS = 300;
+// A new place has to hold this long before the song changes, so walking along
+// a border doesn't flip songs back and forth.
+const SONG_SETTLE_MS = 2500;
+let placeSong = null; // the song of the place the player has settled in
+let islandSong = null; // what plays: placeSong, or one picked with "Next song"
+let candidateSong = null;
+let candidateSince = 0;
+
+function songForPlace() {
+  const { x, z } = player.position;
+  const atHome = state.structures.some((s) => Math.hypot(s.x - x, s.z - z) < HOME_RADIUS);
+  if (dayNight.isNight) return atHome ? 'gutenAbend' : 'mond';
+  if (atHome) return 'lindenbaum';
+  const biome = biomeAt(x, z);
+  if (biome?.id === 'jungle') return 'mond';
+  if (biome?.id === 'fire') return 'gedanken';
+  if (biome?.id === 'lagoon') return 'gutenAbend';
+  return 'keinSchoenerLand';
+}
+
+function updateIslandSong() {
+  const song = songForPlace();
+  const now = performance.now();
+  if (song !== candidateSong) {
+    candidateSong = song;
+    candidateSince = now;
+  }
+  if (placeSong === null || (song !== placeSong && now - candidateSince >= SONG_SETTLE_MS)) {
+    placeSong = song;
+    islandSong = song;
+  }
+}
+
+// Settings "Next song": the pick holds until the player settles somewhere new.
+function nextIslandSong() {
+  const ids = SONGS.map((s) => s.id);
+  islandSong = ids[(ids.indexOf(islandSong) + 1) % ids.length];
+  updateMusic();
+}
+
+// One loop per place you can be. Called whenever that changes, and every
+// island frame so the song can follow the player around.
 function updateMusic() {
   if (state.isGameOver) audio.playMusic(null);
   else if (blackRoom.active) audio.playMusic('blackroom');
-  else if (battle.active) audio.playMusic('battle');
-  else audio.playMusic('island');
+  else if (battle.active || boss.engaged) audio.playMusic('battle');
+  else {
+    updateIslandSong();
+    audio.playMusic(islandSong);
+  }
 }
 updateMusic();
 
@@ -500,7 +593,7 @@ function saveExtras() {
   return {
     worldSeed,
     timeOfDay: dayNight.time,
-    player: { x: player.position.x, z: player.position.z },
+    player: { x: player.position.x, z: player.position.z, dragonId: state.riddenId },
   };
 }
 
@@ -532,6 +625,7 @@ const settings = new SettingsUI({
     clearSave();
     location.reload();
   },
+  onNextSong: nextIslandSong,
 });
 
 let autosaveTimer = setInterval(saveNow, AUTOSAVE_MS);
@@ -555,6 +649,20 @@ if (save) {
     applySave(state, save);
   } finally {
     restoring = false;
+  }
+  // Back on the dragon you were riding. Phillis was spawned where the rider
+  // stood and the others behind her, so swap the two back.
+  const riddenId = save.player?.dragonId;
+  if (riddenId && riddenId !== 'phillis' && state.getDragon(riddenId)) {
+    restoring = true; // no 🐲 pop on load
+    state.ride(riddenId);
+    restoring = false;
+    const a = playerDragon.group.position;
+    const b = player.position;
+    [a.x, a.z, b.x, b.z] = [b.x, b.z, a.x, a.z];
+    a.y = GROUND_Y; // Phillis can't stand on the volcano; the rider re-reads it
+    b.y = GROUND_Y + player.mover.terrainHeight(b.x, b.z);
+    cameraRig.smoothedTarget.copy(b); // no long pan across the island on load
   }
   // Phillis is already the selection, so re-emit rather than re-select: this
   // repaints the caretaking panel with her restored stats.
@@ -585,6 +693,7 @@ window.__game = {
   harvest,
   construction,
   enemies,
+  boss,
   towers,
   projectiles,
   battle,
@@ -633,6 +742,7 @@ function animate() {
 
   world.update(time);
   dayNight.update(dt, player.position);
+  updateMusic();
   if (!state.isGameOver) {
     player.update(dt);
     companions.update(dt, player.position, {
@@ -642,10 +752,11 @@ function animate() {
     });
     harvest.update(dt, player.position);
     enemies.update(dt, player.position);
+    boss.update(dt);
     towers.update(dt);
     projectiles.update(dt);
   }
-  construction.update(dt);
+  construction.update(dt, dayNight.isNight);
 
   // Keep the selection ring pinned under the selected dragon — and off the
   // ground entirely while that dragon is asleep inside a building, so the ring
@@ -656,6 +767,8 @@ function animate() {
     if (!asleep) {
       selectionRing.position.x = selectedDragon.group.position.x;
       selectionRing.position.z = selectedDragon.group.position.z;
+      // Follows a fire dragon up the volcano; 0.2 above its feet on open ground.
+      selectionRing.position.y = selectedDragon.group.position.y - GROUND_Y + 0.2;
     }
   }
 

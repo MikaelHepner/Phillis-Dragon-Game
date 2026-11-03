@@ -11,8 +11,8 @@ import {
 // keeps a minimum separation so they never stack on the same spot.
 //
 // At night the chain breaks and the team turns in: each companion walks to a
-// house or castle, steps inside, and stays hidden until dawn. Phillis is never
-// sent to bed — she is not a companion, so she never reaches this class.
+// house or castle, steps inside, and stays hidden until dawn. The dragon you
+// are riding is never sent to bed — it is not a companion while you ride it.
 
 const FOLLOW_DIST = 34; // stop this far behind the leader
 const CATCH_UP_RANGE = 45; // distance over which speed ramps to full
@@ -53,6 +53,20 @@ export class CompanionManager {
     // re-run the assignment rather than wait for the buildings to change.
     this._assignedAt = null;
     return mover;
+  }
+
+  /**
+   * Take a dragon out of the follow chain (it is becoming the one you ride).
+   * A dragon asleep indoors steps back out of its door first.
+   */
+  remove(dragon) {
+    const i = this.companions.findIndex((c) => c.mover.dragon === dragon);
+    if (i < 0) return false;
+    const [c] = this.companions.splice(i, 1);
+    this.#wake(c);
+    this.sheltered.delete(dragon);
+    this._assignedAt = null; // its bed is free for someone else tonight
+    return true;
   }
 
   /**
@@ -140,12 +154,12 @@ export class CompanionManager {
   }
 
   // Beds are handed out once per nightfall, and again whenever the buildings
-  // change (a house built, or upgraded into a workshop that evicts its lodgers).
-  // Re-running it every frame would let dragons swap houses mid-walk as the
-  // distances between them shift.
+  // change (a house built, upgraded into a workshop that evicts its lodgers, or
+  // moved onto the city street). Re-running it every frame would let dragons swap
+  // houses mid-walk as the distances between them shift.
   #assignBeds(structures, radiusFor) {
     const spots = shelterSpots(structures, radiusFor);
-    const signature = spots.map((s) => s.id).join(',');
+    const signature = spots.map((s) => `${s.id}@${s.x},${s.z}`).join(' ');
     if (signature === this._assignedAt) return;
     this._assignedAt = signature;
 

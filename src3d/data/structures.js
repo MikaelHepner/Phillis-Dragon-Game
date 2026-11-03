@@ -150,5 +150,6 @@ export function structureLabel(s) {
   if (s.upgradeType === 'tower') return '🗼 Tower';
   if (s.upgradeType === 'mine') return '⛏️ Mine';
   if (s.upgradeType === 'blacksmith') return '🔨 Blacksmith';
+  if (s.cityPlot !== undefined) return '🏙️ City Building';
   return s.type === 'castle' ? '🏰 Castle' : '🏠 Dragon House';
 }

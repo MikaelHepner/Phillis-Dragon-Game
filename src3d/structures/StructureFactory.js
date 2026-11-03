@@ -30,6 +30,20 @@ const MAT = {
   barbedIron: new THREE.MeshLambertMaterial({ color: 0x5a5a62, flatShading: true }),
   earth: new THREE.MeshLambertMaterial({ color: 0x6b4f32, flatShading: true }),
   pitDark: new THREE.MeshLambertMaterial({ color: 0x241a10, flatShading: true }),
+  brick: new THREE.MeshLambertMaterial({ color: 0xa8553a, flatShading: true }),
+  concrete: new THREE.MeshLambertMaterial({ color: 0xc9c4b8, flatShading: true }),
+  cityGlass: new THREE.MeshLambertMaterial({ color: 0x5b8fb0, flatShading: true }),
+  cityWindow: new THREE.MeshLambertMaterial({ color: 0x24384a, emissive: 0xffd58a }),
+  road: new THREE.MeshLambertMaterial({ color: 0x4a4b52, flatShading: true }),
+  pavement: new THREE.MeshLambertMaterial({ color: 0xa9a9a2, flatShading: true }),
+  roadPaint: new THREE.MeshLambertMaterial({ color: 0xece8d8, flatShading: true }),
+  lamp: new THREE.MeshLambertMaterial({ color: 0xfff1c4, emissive: 0xffd878 }),
+  lightPool: new THREE.MeshBasicMaterial({
+    color: 0xffd878,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }),
 };
 
 function box(w, h, d, mat, x = 0, y = 0, z = 0) {
@@ -159,13 +173,178 @@ function buildBlacksmith() {
   return g;
 }
 
+// — City buildings: what a Dragon House grows into on the main street. Three
+// designs keep the row from looking stamped out. Each is baked into one shared
+// four-slot geometry, as the wall tile is, because a window is a lot of little
+// boxes and a street holds at least ten buildings.
+//
+// A design is a stack of tiers, each { w, d, floors, floorH }.
+const CITY_DESIGNS = [
+  { // Brick apartments with a water tank on the roof.
+    body: MAT.brick,
+    tiers: [{ w: 44, d: 40, floors: 5, floorH: 15 }],
+    roof: (top) => [
+      new THREE.BoxGeometry(46, 3, 42).translate(0, top + 1.5, 0),
+      new THREE.CylinderGeometry(6, 6, 10, 8).translate(8, top + 8, -6),
+    ],
+  },
+  { // Slim glass tower with a mast: the tallest on the street.
+    body: MAT.cityGlass,
+    tiers: [{ w: 38, d: 38, floors: 8, floorH: 13 }],
+    roof: (top) => [
+      new THREE.BoxGeometry(30, 4, 30).translate(0, top + 2, 0),
+      new THREE.CylinderGeometry(0.8, 1.2, 18, 6).translate(0, top + 13, 0),
+    ],
+  },
+  { // Stone offices that step back towards the top.
+    body: MAT.concrete,
+    tiers: [
+      { w: 46, d: 42, floors: 4, floorH: 14 },
+      { w: 30, d: 28, floors: 3, floorH: 14 },
+    ],
+    roof: (top) => [new THREE.BoxGeometry(32, 3, 30).translate(0, top + 1.5, 0)],
+  },
+];
+
+function bakeCityDesign(design) {
+  const walls = [];
+  const windows = [];
+  const trim = [];
+  let y = 0;
+  for (const { w, d, floors, floorH } of design.tiers) {
+    const h = floors * floorH;
+    walls.push(new THREE.BoxGeometry(w, h, d).translate(0, y + h / 2, 0));
+    for (let f = 0; f < floors; f++) {
+      const wy = y + (f + 0.55) * floorH;
+      // A band between floors, then a row of windows on all four faces.
+      trim.push(new THREE.BoxGeometry(w + 0.8, 1, d + 0.8).translate(0, y + f * floorH + 0.5, 0));
+      const across = Math.floor(w / 11);
+      for (let i = 0; i < across; i++) {
+        const offset = (i - (across - 1) / 2) * (w / across);
+        for (const sign of [-1, 1]) {
+          // Leave the ground-floor centre of the front free for the door.
+          if (f === 0 && sign === 1 && Math.abs(offset) < 7) continue;
+          windows.push(new THREE.BoxGeometry(6, floorH * 0.5, 0.8).translate(offset, wy, (sign * d) / 2));
+          windows.push(new THREE.BoxGeometry(0.8, floorH * 0.5, 6).translate((sign * w) / 2, wy, (offset * d) / w));
+        }
+      }
+    }
+    y += h;
+  }
+  trim.push(...design.roof(y));
+
+  const { w, d } = design.tiers[0];
+  const door = new THREE.BoxGeometry(11, 13, 1.5).translate(0, 6.5, d / 2 + 0.2);
+  const parts = [walls, windows, trim, [door]].map((list) => mergeGeometries(list));
+  const merged = mergeGeometries(parts, true); // slots: walls, windows, trim, door
+  for (const list of [walls, windows, trim, [door]]) list.forEach((g) => g.dispose());
+  parts.forEach((g) => g.dispose());
+  merged.computeBoundingBox();
+  return { geometry: merged, height: merged.boundingBox.max.y, width: w };
+}
+
+const CITY_BAKED = CITY_DESIGNS.map(bakeCityDesign);
+
+function buildCityBuilding(variant) {
+  const baked = CITY_BAKED[variant];
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(baked.geometry, [
+    CITY_DESIGNS[variant].body,
+    MAT.cityWindow,
+    MAT.stoneDark,
+    MAT.doorDark,
+  ]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  g.add(mesh);
+  g.userData.collideRadius = 30; // CITY.buildingRadius, which the plots are spaced for
+  g.userData.height = baked.height;
+  return g;
+}
+
 const BUILDERS = {
   house: buildHouse,
   castle: buildCastle,
   tower: buildTower,
   mine: buildMine,
   blacksmith: buildBlacksmith,
+  city_0: () => buildCityBuilding(0),
+  city_1: () => buildCityBuilding(1),
+  city_2: () => buildCityBuilding(2),
 };
+
+export const CITY_VARIANTS = CITY_DESIGNS.length;
+
+// — Main street: road, centre dashes, pavements and streetlights. Laid just above
+// the ground plane, which is noisy enough to poke through anything flush with it
+// (see the graben tile). Materials are shared, so one setStreetlightGlow() call
+// turns the whole street on.
+
+// Only the geometries that change with the street's length are made per street.
+const LIGHT_POST_GEO = (() => {
+  const pole = new THREE.CylinderGeometry(0.9, 1.3, 30, 6).translate(0, 15, 0);
+  const arm = new THREE.BoxGeometry(1, 1, 8).translate(0, 30, 4); // reaches over the road (+z)
+  const merged = mergeGeometries([pole, arm]);
+  pole.dispose();
+  arm.dispose();
+  return merged;
+})();
+const LIGHT_LAMP_GEO = new THREE.BoxGeometry(3, 1.6, 5).translate(0, 29, 7);
+const LIGHT_POOL_GEO = new THREE.CircleGeometry(20, 16).rotateX(-Math.PI / 2).translate(0, 2, 6);
+
+/** 0 = lamps off (day), 1 = fully lit (night). */
+export function setStreetlightGlow(k) {
+  MAT.lamp.emissiveIntensity = 0.05 + k * 1.6;
+  MAT.lightPool.opacity = 0.32 * k;
+  MAT.lightPool.visible = k > 0;
+  MAT.cityWindow.emissiveIntensity = k * 0.85;
+}
+setStreetlightGlow(0);
+
+/**
+ * @param {number} length  road length along x, centred on the group's origin
+ * @param {Array<{x, z}>} lights  positions relative to the group's origin
+ */
+export function createStreet(length, lights) {
+  const g = new THREE.Group();
+
+  const road = new THREE.BoxGeometry(length, 8, 40).translate(0, -2.8, 0); // top at 1.2
+  const kerbs = mergeGeometries([
+    new THREE.BoxGeometry(length, 8, 12).translate(0, -2.3, -26), // top at 1.7
+    new THREE.BoxGeometry(length, 8, 12).translate(0, -2.3, 26),
+  ]);
+  const dashes = [];
+  for (let x = -length / 2 + 10; x < length / 2 - 10; x += 26) {
+    dashes.push(new THREE.BoxGeometry(14, 0.3, 1.4).translate(x, 1.3, 0));
+  }
+  const dashGeo = mergeGeometries(dashes);
+  dashes.forEach((d) => d.dispose());
+
+  for (const [geo, mat] of [[road, MAT.road], [kerbs, MAT.pavement], [dashGeo, MAT.roadPaint]]) {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    mesh.userData.streetOwned = true; // disposed with the street, unlike the shared lamps
+    g.add(mesh);
+  }
+
+  for (const { x, z } of lights) {
+    const light = new THREE.Group();
+    light.position.set(x, 0, z);
+    if (z > 0) light.rotation.y = Math.PI; // arm reaches towards the road's centre
+    const post = new THREE.Mesh(LIGHT_POST_GEO, MAT.stoneDark);
+    post.castShadow = true;
+    light.add(post, new THREE.Mesh(LIGHT_LAMP_GEO, MAT.lamp), new THREE.Mesh(LIGHT_POOL_GEO, MAT.lightPool));
+    g.add(light);
+  }
+  return g;
+}
+
+/** Free a street's own buffers when it is replaced by a longer one. */
+export function disposeStreet(group) {
+  group.traverse((o) => {
+    if (o.userData.streetOwned) o.geometry.dispose();
+  });
+}
 
 /**
  * Build the model for a structure state entry: its upgrade class when

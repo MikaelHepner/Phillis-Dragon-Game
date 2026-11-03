@@ -37,6 +37,7 @@ export class Hud {
     });
     state.on('cards', () => this.#renderBackpack());
     state.on('selection', (d) => this.#renderDragon(d));
+    state.on('ride', () => this.#renderDragon(state.selected));
     state.on('stats', (d) => {
       if (d && d.id === state.selectedId) this.#renderStats(d.stats);
     });
@@ -114,6 +115,8 @@ export class Hud {
     mk('🍎 Feed', () => this.state.feed(this.state.selectedId));
     mk('😴 Rest', () => this.state.rest(this.state.selectedId));
     mk('💖 Pet', () => this.state.pet(this.state.selectedId));
+    // Only offered for a dragon you are not already riding.
+    this.rideBtn = mk('🐲 Ride', () => this.state.ride(this.state.selectedId));
     panel.appendChild(actions);
 
     this.dragonPanel = panel;
@@ -126,6 +129,7 @@ export class Hud {
     }
     this.dragonPanel.classList.remove('hidden');
     this.dragonName.textContent = `🐉 ${d.name}  ·  Lv ${d.stats.level}`;
+    this.rideBtn.hidden = d.id === this.state.riddenId;
     this.#renderStats(d.stats);
   }
 

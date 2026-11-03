@@ -68,6 +68,20 @@ const EMBER_ROCK = {
   sfx: 'rock',
 };
 
+// Lagoon fishing spots are the island's only wild source of fish (otherwise
+// it's Fishing Rod gift cards). The fish ducks under on a catch and leaps
+// again after the cooldown, like apples regrowing.
+const FISHING_SPOT = {
+  type: 'fishingSpot',
+  harvestRadius: 46,
+  cooldownMs: 8000,
+  depletes: false,
+  yields: [{ res: 'fish', amount: 1 }],
+  label: '+1 🐟',
+  floatHeight: 30,
+  sfx: 'splash',
+};
+
 // Easings for the pop / crumble juice.
 const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
 const easeOutBack = (t) => {
@@ -171,6 +185,9 @@ export class HarvestManager {
   }
   addEmberRock(object) {
     this.nodes.push(new HarvestNode(object, EMBER_ROCK));
+  }
+  addFishingSpot(object) {
+    this.nodes.push(new HarvestNode(object, FISHING_SPOT));
   }
 
   /**

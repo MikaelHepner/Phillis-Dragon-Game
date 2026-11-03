@@ -290,7 +290,8 @@ export function createWorld(scene, seed = randomWorldSeed()) {
     place(rocks, buildRock(randomSpawnPosition(rng), rng));
   }
 
-  // Jungle (south-east) and fire fields (north-west) — see biomes/.
+  // Jungle (south-east), fire fields (north-west) and lagoon (north-east) —
+  // see biomes/.
   const biomes = buildBiomes(scene, rng);
   colliders.push(...biomes.colliders);
 
@@ -303,9 +304,11 @@ export function createWorld(scene, seed = randomWorldSeed()) {
     rocks,
     jungleTrees: biomes.jungleTrees,
     emberRocks: biomes.emberRocks,
+    fishingSpots: biomes.fishingSpots,
     // Lava pools burn Black Dragons on contact. main.js merges these into the
     // shared hazards list the ConstructionManager and EnemyManager use.
     lavaHazards: biomes.hazards,
+    fixedObstacles: biomes.fixedObstacles,
     colliders,
     // Walkable bounds: keep entities a margin inside the ground plane edge.
     bounds: { size: WORLD_SIZE, margin: 40 },

@@ -5,7 +5,8 @@
 //
 // The island stays a single WORLD_SIZE×WORLD_SIZE landmass (GAME_DESIGN.md
 // §2). Biomes are round-ish patches laid over the meadow: the jungle in the
-// south-east, the volcanic fire biome in the north-west. The meadow keeps the
+// south-east, the volcanic fire biome in the north-west, and the lagoon — a
+// sandy shore around a big lake — in the north-east. The meadow keeps the
 // centre, so the player spawn and the opening minutes of the game are
 // meadow-only. Positions and radii are fractions of the island so they scale
 // with it (the layout below matches the original 2000² island's 1520/1500
@@ -25,6 +26,13 @@ export const BIOMES = [
     id: 'fire',
     label: 'Fire Fields',
     cx: WORLD_SIZE * 0.24,
+    cz: WORLD_SIZE * 0.25,
+    radius: WORLD_SIZE * 0.165,
+  },
+  {
+    id: 'lagoon',
+    label: 'Lagoon',
+    cx: WORLD_SIZE * 0.76,
     cz: WORLD_SIZE * 0.25,
     radius: WORLD_SIZE * 0.165,
   },

@@ -4,6 +4,11 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRAGON_TYPES_BY_ID } from './data/dragonTypes.js';
 import { createDragon } from './dragons/DragonFactory.js';
+import { preloadDragonModel } from './dragons/DragonModel.js';
+
+// ?anim=idle|walk|fly sets the loop; ?dragons=proc forces procedural dragons.
+const qs = new URLSearchParams(location.search);
+await preloadDragonModel({ enabled: qs.get('dragons') !== 'proc' });
 
 // Debug page: the Meshy glTF dragon beside a procedural one, under the SAME
 // lighting the game currently uses, so the comparison is about the mesh only.
@@ -46,10 +51,16 @@ const TARGET_HEIGHT = 20; // match the procedural dragon's overall height
 
 if (only !== 'model') {
   const proc = createDragon(DRAGON_TYPES_BY_ID.phillis);
-  proc.group.position.set(-24, 0, 0);
+  proc.group.position.set(-34, 0, 0);
+  proc.setAnimation(qs.get('anim') ?? 'idle');
   scene.add(proc.group);
-  renderer.setAnimationLoop(null);
   window.__proc = proc;
+
+  const fire = createDragon(DRAGON_TYPES_BY_ID.fire);
+  fire.group.position.set(34, 0, 0);
+  fire.setAnimation(qs.get('anim') ?? 'idle');
+  scene.add(fire.group);
+  window.__fire = fire;
 }
 
 new GLTFLoader().load('/models/dragon.glb', (gltf) => {
@@ -79,9 +90,9 @@ new GLTFLoader().load('/models/dragon.glb', (gltf) => {
 }, undefined, (e) => console.error('[preview] load failed', e));
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 2000);
-camera.position.set(0, 26, 86);
+camera.position.set(0, 34, 132);
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 10, 0);
+controls.target.set(0, 15, 0);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2.05;
 
@@ -95,6 +106,7 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (window.__proc) window.__proc.update(dt);
+  if (window.__fire) window.__fire.update(dt);
   controls.update();
   renderer.render(scene, camera);
 });

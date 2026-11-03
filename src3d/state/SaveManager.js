@@ -18,12 +18,18 @@
 //   - counters                   — keeps freshly crafted/built ids unique
 //   - worldSeed                  — the 3D island scatters its own trees/rocks,
 //     so the seed is what makes "refresh restores your island exactly" true
-//   - timeOfDay / player         — day-night clock and where you were standing
+//   - timeOfDay / player         — day-night clock, where you were standing,
+//     and which dragon you were riding (player.dragonId; absent = Phillis)
+//   - boss.hp                    — the volcano dragon's remaining HP (0 = slain)
+//   - city / structures[].cityPlot — the main street's centre and each building's
+//     plot; both absent until ten houses have gathered
 //
 // Loading is deliberately event-driven: applySave() pushes data into GameState
 // and re-emits the same events a live game would ('dragonAdded',
 // 'structureAdded', …), so every scene manager rebuilds itself through the code
 // path it already uses. No manager needs to know the save format exists.
+
+import { BOSS_MAX_HP } from './GameState.js';
 
 export const SAVE_KEY = 'dragonIsland3D.save';
 export const SAVE_VERSION = 1;
@@ -83,7 +89,9 @@ export function serialize(state, { worldSeed, timeOfDay, player } = {}) {
       x: s.x,
       y: s.z, // §5 uses the 2D plane's y for our world z
       upgradeType: s.upgradeType,
+      ...(s.cityPlot !== undefined ? { cityPlot: s.cityPlot } : {}),
     })),
+    ...(state.city ? { city: { x: state.city.x, z: state.city.z } } : {}),
     // Outer defences. Like the walls, only the counts are stored — the trench
     // ring and the wire's front slots are re-derived from the restored wall
     // geometry, so a loaded island matches a live one exactly.
@@ -96,7 +104,10 @@ export function serialize(state, { worldSeed, timeOfDay, player } = {}) {
       structureCount: state.structureCount,
       wireCount: state.wireCount,
     },
-    player: player ? { x: player.x, z: player.z } : null,
+    boss: { hp: state.bossHp },
+    player: player
+      ? { x: player.x, z: player.z, ...(player.dragonId ? { dragonId: player.dragonId } : {}) }
+      : null,
   };
 }
 
@@ -176,6 +187,11 @@ export function applySave(state, save) {
   state.craftCount = save.counters?.craftCount ?? 0;
   state.structureCount = save.counters?.structureCount ?? 0;
 
+  // — City — set before the structures, so each building spawns as part of it.
+  const city = save.city;
+  const validCity = Number.isFinite(city?.x) && Number.isFinite(city?.z);
+  state.city = validCity ? { x: city.x, z: city.z } : null;
+
   // — Structures — each one re-emits 'structureAdded', which is what makes
   // ConstructionManager rebuild the mesh, collider and (for castles) the wall
   // ring. Rebuilding the walls from the algorithm rather than saving tile
@@ -189,6 +205,7 @@ export function applySave(state, save) {
       z: s.z ?? s.y, // §5 stores our z as y
       upgradeType: s.upgradeType ?? null,
     };
+    if (validCity && Number.isInteger(s.cityPlot) && s.cityPlot >= 0) entry.cityPlot = s.cityPlot;
     state.structures.push(entry);
     state.emit('structureAdded', entry);
   }
@@ -200,6 +217,12 @@ export function applySave(state, save) {
     wireCount: save.counters?.wireCount ?? 0,
     hasGraben: save.defences?.hasGraben === true,
   });
+
+  // — Volcano boss — saves from before it existed meet a fresh one.
+  const bossHp = save.boss?.hp;
+  if (typeof bossHp === 'number' && Number.isFinite(bossHp)) {
+    state.bossHp = Math.min(BOSS_MAX_HP, Math.max(0, Math.round(bossHp)));
+  }
 
   state.emit('loaded', save);
 }
